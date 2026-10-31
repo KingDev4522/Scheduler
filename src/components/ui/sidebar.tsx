@@ -255,7 +255,7 @@ function SidebarTrigger({
       size="icon-sm"
       title="Toggle sidebar (Ctrl+B)"
       className={cn(className)}
-      onClick={(event) => {
+      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
         onClick?.(event)
         toggleSidebar()
       }}
