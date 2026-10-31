@@ -1,0 +1,237 @@
+import type { BookingDraft, BookingWindow } from '../lib/api'
+
+export interface BookingFormOptions {
+  days: string[]
+  roomTypes: string[]
+  needs: string[]
+  groups: string[]
+  rooms: { id: string; name: string }[]
+}
+
+function toggle(list: string[], value: string): string[] {
+  return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+}
+
+export function BookingDraftForm({
+  draft,
+  onChange,
+  options,
+}: {
+  draft: BookingDraft
+  onChange: (draft: BookingDraft) => void
+  options: BookingFormOptions
+}) {
+  const update = <K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) =>
+    onChange({ ...draft, [key]: value })
+
+  const updateWindow = (index: number, patch: Partial<BookingWindow>) => {
+    const windows = draft.windows.map((window, position) =>
+      position === index ? { ...window, ...patch } : window,
+    )
+    update('windows', windows)
+  }
+
+  const addWindow = () =>
+    update('windows', [
+      ...draft.windows,
+      { day: options.days[0] ?? 'MON', from_period: 10, to_period: 11 },
+    ])
+
+  const removeWindow = (index: number) =>
+    update('windows', draft.windows.filter((_, position) => position !== index))
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <label htmlFor="booking-title" className="mb-1 block text-xs font-medium text-neutral-600">
+            Event title
+          </label>
+          <input
+            id="booking-title"
+            value={draft.title}
+            onChange={(event) => update('title', event.target.value)}
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
+          />
+        </div>
+        <div>
+          <label htmlFor="booking-attendance" className="mb-1 block text-xs font-medium text-neutral-600">
+            Attendance
+          </label>
+          <input
+            id="booking-attendance"
+            type="number"
+            min={1}
+            value={draft.attendance ?? ''}
+            onChange={(event) =>
+              update('attendance', event.target.value === '' ? null : Number(event.target.value))
+            }
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
+          />
+        </div>
+        <div>
+          <label htmlFor="booking-duration" className="mb-1 block text-xs font-medium text-neutral-600">
+            Duration (periods)
+          </label>
+          <input
+            id="booking-duration"
+            type="number"
+            min={1}
+            max={13}
+            value={draft.duration_periods ?? ''}
+            onChange={(event) =>
+              update('duration_periods', event.target.value === '' ? null : Number(event.target.value))
+            }
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
+          />
+        </div>
+      </div>
+
+      <fieldset>
+        <legend className="mb-2 text-xs font-medium text-neutral-600">Requested windows</legend>
+        <div className="space-y-2">
+          {draft.windows.map((window, index) => (
+            <div key={index} className="flex flex-wrap items-end gap-2">
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
+                  Day
+                </label>
+                <select
+                  value={window.day}
+                  onChange={(event) => updateWindow(index, { day: event.target.value })}
+                  className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+                >
+                  {options.days.map((day) => (
+                    <option key={day} value={day}>
+                      {day}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
+                  From
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={13}
+                  value={window.from_period}
+                  onChange={(event) => updateWindow(index, { from_period: Number(event.target.value) })}
+                  className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
+                  To
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={13}
+                  value={window.to_period}
+                  onChange={(event) => updateWindow(index, { to_period: Number(event.target.value) })}
+                  className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeWindow(index)}
+                className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-semibold text-neutral-600"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addWindow}
+            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700"
+          >
+            Add window
+          </button>
+        </div>
+      </fieldset>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <fieldset>
+          <legend className="mb-2 text-xs font-medium text-neutral-600">Room types</legend>
+          <div className="flex flex-wrap gap-2">
+            {options.roomTypes.map((type) => (
+              <label key={type} className="inline-flex items-center gap-1.5 text-xs text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={draft.room_types.includes(type)}
+                  onChange={() => update('room_types', toggle(draft.room_types, type))}
+                  className="h-3.5 w-3.5 rounded border-neutral-300"
+                />
+                {type}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className="mb-2 text-xs font-medium text-neutral-600">Facilities</legend>
+          <div className="flex flex-wrap gap-2">
+            {options.needs.map((need) => (
+              <label key={need} className="inline-flex items-center gap-1.5 text-xs text-neutral-700">
+                <input
+                  type="checkbox"
+                  checked={draft.needs.includes(need)}
+                  onChange={() => update('needs', toggle(draft.needs, need))}
+                  className="h-3.5 w-3.5 rounded border-neutral-300"
+                />
+                {need}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor="booking-room" className="mb-1 block text-xs font-medium text-neutral-600">
+            Preferred room (optional)
+          </label>
+          <select
+            id="booking-room"
+            value={draft.requested_room ?? ''}
+            onChange={(event) => update('requested_room', event.target.value || null)}
+            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          >
+            <option value="">Any suitable room</option>
+            {options.rooms.map((room) => (
+              <option key={room.id} value={room.id}>
+                {room.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="booking-groups" className="mb-1 block text-xs font-medium text-neutral-600">
+            Groups that must be free (optional)
+          </label>
+          <select
+            id="booking-groups"
+            multiple
+            value={draft.mandatory_for_groups}
+            onChange={(event) =>
+              update(
+                'mandatory_for_groups',
+                Array.from(event.target.selectedOptions).map((option) => option.value),
+              )
+            }
+            className="h-24 w-full rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs"
+          >
+            {options.groups.map((group) => (
+              <option key={group} value={group}>
+                {group}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  )
+}

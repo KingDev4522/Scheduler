@@ -4,6 +4,7 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState, StatusNotice } from '../components/States'
 import { DecisionDialog, type Decision } from '../components/DecisionDialog'
 import { useAuth } from '../lib/auth'
+import { useOfficial } from '../hooks/useOfficial'
 import { decideBooking, decideProposal, getData, type AppData } from '../lib/store'
 import { pendingDecisions, type PendingDecision } from '../lib/selectors'
 
@@ -21,6 +22,7 @@ function timeAgo(ts: number): string {
 
 export default function Approvals() {
   const { user } = useAuth()
+  const official = useOfficial()
   const [data, setData] = useState<AppData>(getData)
   const [tab, setTab] = useState<Tab>('pending')
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
@@ -117,6 +119,40 @@ export default function Approvals() {
       />
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+
+      {official.schedule?.proposal_status === 'pending' && official.schedule.diff && (
+        <section className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="text-sm font-semibold text-amber-900">Official disruption proposal</h3>
+          <p className="mt-1 text-xs text-amber-800">
+            {official.schedule.diff.moved_count} session(s) moved ·{' '}
+            {official.schedule.diff.room_only_changed} room-only ·{' '}
+            {official.schedule.diff.time_changed} time change · hard violations{' '}
+            {official.schedule.after_summary?.hard_violation_count ?? '—'}
+          </p>
+          {user.role === 'admin' ? (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void official.approveProposal()}
+                disabled={official.busy}
+                className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                Approve proposal
+              </button>
+              <button
+                type="button"
+                onClick={() => void official.rejectProposal()}
+                disabled={official.busy}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:opacity-50"
+              >
+                Reject proposal
+              </button>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-amber-800">Admin approval is required before it applies.</p>
+          )}
+        </section>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">

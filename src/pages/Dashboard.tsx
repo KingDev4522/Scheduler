@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Building2,
   CalendarCheck2,
@@ -27,6 +28,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatCard } from '../components/StatCard'
 import { EmptyState, StatusNotice } from '../components/States'
 import { DecisionDialog, type Decision } from '../components/DecisionDialog'
+import { useOfficial } from '../hooks/useOfficial'
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts
@@ -41,6 +43,7 @@ function timeAgo(ts: number): string {
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const official = useOfficial()
   const [data, setData] = useState<AppData>(getData)
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
   const [target, setTarget] = useState<PendingDecision | null>(null)
@@ -114,6 +117,28 @@ export default function Dashboard() {
       />
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+
+      {official.schedule && (
+        <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Official generated schedule</h3>
+              <p className="mt-1 text-xs text-slate-500">
+                {official.schedule.summary.hard_violation_count} hard violations · booking score{' '}
+                {official.schedule.summary.bookings?.booking_score ?? '—'} /{' '}
+                {official.schedule.summary.bookings?.booking_score_max_if_all_approved ?? '—'} ·
+                proposal {official.schedule.proposal_status ?? 'none'}
+              </p>
+            </div>
+            <Link
+              to="/official"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+            >
+              Open Official Data →
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

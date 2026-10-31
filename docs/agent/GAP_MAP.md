@@ -1,10 +1,19 @@
 # Gap Map — Navigation Surface vs. Phase Plan
 
-Inventory of the ten `NAV` items in `src/lib/nav.tsx`, mapped to the owning phase and task.
+**Current state (2026-10-31):** D1 = **hybrid** (SPA + FastAPI + SQLite + CP-SAT + Gemini). Thirteen
+nav items now exist, including **Official Data**, **Manual Booking**, **AI Assistant** and **My Workspace**. The
+detailed rows below predate the backend/Phase 4 work; where they disagree, this note wins.
+
+Async status: Official Data ✅ · Manual Booking ✅ · AI Assistant ✅ (Gemini 3.6 Flash + local fallback) ·
+Admin official pipeline ✅ · four demo accounts ✅ · token auth ✅ · faculty availability/change ✅ ·
+club cancellation ✅ · Official timetable/exams/dashboard ✅ · Bookings/Changes/Approvals still mix
+demo data with official actions.
+
+Inventory of the ten original `NAV` items in `src/lib/nav.tsx`, mapped to the owning phase and task.
 Status legend: **done** = functional · **partial** = renders real data or part of the flow ·
 **missing** = placeholder or absent.
 
-State recorded after the Phase 1 implementation pass (2026-10-31, D1 = browser-only).
+State recorded after the Phase 1 implementation pass (2026-10-31, D1 = hybrid).
 
 | # | Nav item | Route | Route file | Status | Owning phase / task | Notes |
 |---|---|---|---|---|---|---|

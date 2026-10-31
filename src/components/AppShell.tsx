@@ -6,6 +6,7 @@ import { findNav } from '../lib/nav'
 import { ROLE_LABEL, useAuth } from '../lib/auth'
 import { KEYS, readJSON, writeJSON } from '../lib/storage'
 import AppSidebar from './AppSidebar'
+import { AssistantDock } from './AssistantDock'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from './ui/sidebar'
 
 export default function AppShell() {
@@ -68,6 +69,8 @@ export default function AppShell() {
           CIT Scheduler — demo build, data stored in your browser (localStorage)
         </footer>
       </SidebarInset>
+
+      <AssistantDock />
     </SidebarProvider>
   )
 }

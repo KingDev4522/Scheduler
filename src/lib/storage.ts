@@ -3,6 +3,7 @@
 export const KEYS = {
   users: 'cit-scheduler:users',
   session: 'cit-scheduler:session',
+  token: 'cit-scheduler:token',
   data: 'cit-scheduler:data',
   dataset: 'cit-scheduler:dataset',
   loginAttempts: 'cit-scheduler:login-attempts',

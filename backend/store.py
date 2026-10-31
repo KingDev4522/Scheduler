@@ -31,6 +31,26 @@ CREATE TABLE IF NOT EXISTS generation (
     payload TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS booking_submissions (
+    id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL,
+    submitted_at TEXT NOT NULL,
+    decided_by TEXT,
+    decided_at TEXT,
+    reason TEXT
+);
+
+CREATE TABLE IF NOT EXISTS change_requests (
+    id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL,
+    submitted_at TEXT NOT NULL,
+    decided_by TEXT,
+    decided_at TEXT,
+    reason TEXT
+);
 """
 
 STATE_FIELDS = (
@@ -44,6 +64,8 @@ STATE_FIELDS = (
     "diff",
     "generated_at",
     "proposal_status",
+    "proposal_approved_by",
+    "proposal_approved_at",
     "policy_order",
     "policy_version",
 )
@@ -120,3 +142,94 @@ def load_state() -> dict[str, Any]:
 def clear_generation() -> None:
     with _db() as conn:
         conn.execute("DELETE FROM generation WHERE id = 1")
+
+
+def save_submission(request: dict[str, Any]) -> None:
+    with _db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO booking_submissions "
+            "(id, payload, status, submitted_at, decided_by, decided_at, reason) "
+            "VALUES (?, ?, 'pending', ?, NULL, NULL, NULL)",
+            (request["id"], json.dumps(request, ensure_ascii=False), request["submitted_at"]),
+        )
+
+
+def list_submissions() -> list[dict[str, Any]]:
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT payload, status, submitted_at, decided_by, decided_at, reason "
+            "FROM booking_submissions ORDER BY submitted_at DESC"
+        ).fetchall()
+    out = []
+    for row in rows:
+        record = json.loads(row["payload"])
+        record.update(
+            status=row["status"],
+            submitted_at=row["submitted_at"],
+            decided_by=row["decided_by"],
+            decided_at=row["decided_at"],
+            reason=row["reason"],
+        )
+        out.append(record)
+    return out
+
+
+def get_submission(request_id: str) -> dict[str, Any] | None:
+    return next((item for item in list_submissions() if item["id"] == request_id), None)
+
+
+def decide_submission(request_id: str, status: str, actor: str, reason: str) -> None:
+    with _db() as conn:
+        conn.execute(
+            "UPDATE booking_submissions SET status = ?, decided_by = ?, decided_at = ?, reason = ? "
+            "WHERE id = ?",
+            (status, actor, _now(), reason, request_id),
+        )
+
+
+def save_change_request(record: dict[str, Any]) -> None:
+    with _db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO change_requests "
+            "(id, payload, status, submitted_at, decided_by, decided_at, reason) "
+            "VALUES (?, ?, ?, ?, NULL, NULL, NULL)",
+            (
+                record["id"],
+                json.dumps(record, ensure_ascii=False),
+                record.get("status", "pending"),
+                record["submitted_at"],
+            ),
+        )
+
+
+def list_change_requests() -> list[dict[str, Any]]:
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT payload, status, submitted_at, decided_by, decided_at, reason "
+            "FROM change_requests ORDER BY submitted_at DESC"
+        ).fetchall()
+    out = []
+    for row in rows:
+        record = json.loads(row["payload"])
+        record.update(
+            status=row["status"],
+            submitted_at=row["submitted_at"],
+            decided_by=row["decided_by"],
+            decided_at=row["decided_at"],
+            reason=row["reason"],
+        )
+        out.append(record)
+    return out
+
+
+def get_change_request(request_id: str) -> dict[str, Any] | None:
+    return next((item for item in list_change_requests() if item["id"] == request_id), None)
+
+
+def decide_change_request(request_id: str, status: str, actor: str, reason: str) -> None:
+    with _db() as conn:
+        conn.execute(
+            "UPDATE change_requests SET status = ?, decided_by = ?, decided_at = ?, reason = ? "
+            "WHERE id = ?",
+            (status, actor, _now(), reason, request_id),
+        )

@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { api } from './api'
 import { KEYS, readJSON, removeKey, writeJSON } from './storage'
 
 export type Role = 'admin' | 'event_manager' | 'department_coordinator' | 'faculty'
@@ -19,7 +20,6 @@ export const ROLE_LABEL: Record<Role, string> = {
 
 export interface StoredUser {
   username: string
-  password: string
   role: Role
   displayName: string
   department?: string
@@ -34,58 +34,31 @@ export interface SessionUser {
 }
 
 interface Session {
-  username: string
+  token: string
+  user: SessionUser
   loggedInAt: number
 }
 
-interface LoginAttempts {
-  count: number
-  lockedUntil: number
-}
-
-/** Demo accounts (documented in README). Passwords are demo-only by design. */
 const SEED_USERS: StoredUser[] = [
-  { username: 'debjeet', password: '1234', role: 'admin', displayName: 'Debjeet' },
-  { username: 'mehul', password: '1234', role: 'event_manager', displayName: 'Mehul' },
+  { username: 'debjeet', role: 'admin', displayName: 'Debjeet' },
+  { username: 'mehul', role: 'event_manager', displayName: 'Mehul' },
   {
     username: 'indranil',
-    password: '1234',
     role: 'department_coordinator',
     displayName: 'Indranil',
     department: 'CSE',
   },
   {
     username: 'ananya',
-    password: '1234',
     role: 'faculty',
     displayName: 'Dr. Ananya Mishra',
     department: 'CSE',
   },
 ]
 
-const MAX_ATTEMPTS = 5
-const LOCK_MS = 30_000
-
-/**
- * Called once at startup: makes sure every demo user exists in localStorage.
- * It merges by username, so existing browsers gain a newly added demo account
- * without losing local data.
- */
+/** Kept for the Help page/demo list; login is authenticated by the backend. */
 export function ensureSeedUsers(): void {
-  const existing = readJSON<StoredUser[] | null>(KEYS.users, null)
-  if (!existing || existing.length === 0) {
-    writeJSON(KEYS.users, SEED_USERS)
-    return
-  }
-  const merged = [...existing]
-  let changed = false
-  for (const seed of SEED_USERS) {
-    if (!merged.some((user) => user.username === seed.username)) {
-      merged.push(seed)
-      changed = true
-    }
-  }
-  if (changed) writeJSON(KEYS.users, merged)
+  writeJSON(KEYS.users, SEED_USERS)
 }
 
 export function initialsOf(name: string): string {
@@ -97,69 +70,20 @@ export function initialsOf(name: string): string {
     .join('')
 }
 
-function toSessionUser(user: StoredUser): SessionUser {
-  return {
-    username: user.username,
-    role: user.role,
-    displayName: user.displayName,
-    department: user.department,
-    initials: initialsOf(user.displayName),
+function restoreSession(): SessionUser | null {
+  const session = readJSON<Session | null>(KEYS.session, null)
+  if (!session?.token || !session.user?.username) return null
+  if (localStorage.getItem(KEYS.token) !== session.token) {
+    writeJSON(KEYS.token, session.token)
   }
-}
-
-function getLockState(): LoginAttempts {
-  return readJSON<LoginAttempts>(KEYS.loginAttempts, { count: 0, lockedUntil: 0 })
+  return session.user
 }
 
 export type LoginResult = { ok: true; user: SessionUser } | { ok: false; error: string }
 
-function attemptLogin(username: string, password: string): LoginResult {
-  const attempts = getLockState()
-  if (attempts.lockedUntil > Date.now()) {
-    const secs = Math.ceil((attempts.lockedUntil - Date.now()) / 1000)
-    return { ok: false, error: `Too many attempts. Try again in ${secs}s.` }
-  }
-
-  const users = readJSON<StoredUser[]>(KEYS.users, SEED_USERS)
-  const match = users.find(
-    (u) => u.username.toLowerCase() === username.trim().toLowerCase() && u.password === password,
-  )
-
-  if (!match) {
-    const next: LoginAttempts = {
-      count: attempts.count + 1,
-      lockedUntil:
-        attempts.count + 1 >= MAX_ATTEMPTS ? Date.now() + LOCK_MS : attempts.lockedUntil,
-    }
-    writeJSON(KEYS.loginAttempts, next)
-    const remaining = MAX_ATTEMPTS - next.count
-    return {
-      ok: false,
-      error:
-        next.lockedUntil > Date.now()
-          ? `Too many attempts. Locked for ${LOCK_MS / 1000}s.`
-          : `Invalid username or password. ${remaining} attempt${remaining === 1 ? '' : 's'} left.`,
-    }
-  }
-
-  removeKey(KEYS.loginAttempts)
-  const user = toSessionUser(match)
-  const session: Session = { username: match.username, loggedInAt: Date.now() }
-  writeJSON(KEYS.session, session)
-  return { ok: true, user }
-}
-
-function restoreSession(): SessionUser | null {
-  const session = readJSON<Session | null>(KEYS.session, null)
-  if (!session?.username) return null
-  const users = readJSON<StoredUser[]>(KEYS.users, SEED_USERS)
-  const stored = users.find((u) => u.username === session.username)
-  return stored ? toSessionUser(stored) : null
-}
-
 interface AuthContextValue {
   user: SessionUser | null
-  login: (username: string, password: string) => LoginResult
+  login: (username: string, password: string) => Promise<LoginResult>
   logout: () => void
 }
 
@@ -168,13 +92,41 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(() => restoreSession())
 
-  const login = useCallback((username: string, password: string): LoginResult => {
-    const result = attemptLogin(username, password)
-    if (result.ok) setUser(result.user)
-    return result
-  }, [])
+  const login = useCallback(
+    async (username: string, password: string): Promise<LoginResult> => {
+      try {
+        const result = await api.login(username.trim(), password)
+        const next: SessionUser = {
+          username: result.user.username,
+          role: result.user.role,
+          displayName: result.user.displayName,
+          department: result.user.department ?? undefined,
+          initials: result.user.initials || initialsOf(result.user.displayName),
+        }
+        writeJSON(KEYS.token, result.token)
+        localStorage.setItem(KEYS.token, result.token)
+        writeJSON(KEYS.session, {
+          token: result.token,
+          user: next,
+          loggedInAt: Date.now(),
+        } satisfies Session)
+        setUser(next)
+        return { ok: true, user: next }
+      } catch (error) {
+        return {
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Sign-in failed. Check the backend is running.',
+        }
+      }
+    },
+    [],
+  )
 
   const logout = useCallback(() => {
+    removeKey(KEYS.token)
     removeKey(KEYS.session)
     setUser(null)
   }, [])

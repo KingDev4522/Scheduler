@@ -1,10 +1,17 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { AlertTriangle, CalendarRange, CheckCircle2 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState, ErrorState } from '../components/States'
 import { TimetableGrid } from '../components/TimetableGrid'
 import { getData } from '../lib/store'
+import { useAuth } from '../lib/auth'
+import { useOfficial } from '../hooks/useOfficial'
+import {
+  buildOfficialView,
+  officialOptions,
+  officialSessionsForView,
+} from '../lib/official'
 import {
   TIMETABLE_VIEWS,
   conflictsForView,
@@ -22,15 +29,38 @@ function isTimetableView(value: string | null): value is TimetableView {
 }
 
 export default function Timetables() {
-  const [data] = useState(getData)
+  const [demoData] = useState(getData)
+  const { user } = useAuth()
+  const official = useOfficial()
+  const officialView = useMemo(
+    () =>
+      official.dataset && official.schedule
+        ? buildOfficialView(official.dataset, official.schedule)
+        : null,
+    [official.dataset, official.schedule],
+  )
+  const data = officialView?.data ?? demoData
+  const usingOfficial = officialView !== null
   const [params, setParams] = useSearchParams()
 
   const viewParam = params.get('view')
   const view: TimetableView = isTimetableView(viewParam) ? viewParam : 'group'
-  const options = viewOptions(data, view)
+  const options = officialView ? officialOptions(officialView, view) : viewOptions(data, view)
   const requestedId = params.get('id')
+  const facultyName =
+    user?.role === 'faculty'
+      ? data.faculty.find((member) =>
+          member.name
+            .toLowerCase()
+            .includes(user.displayName.split(' ').slice(-1)[0]!.toLowerCase()),
+        )?.id
+      : undefined
+  const defaultId =
+    view === 'faculty' && facultyName && options.some((option) => option.id === facultyName)
+      ? facultyName
+      : options[0]?.id ?? ''
   const unknownSelection = requestedId !== null && !options.some((option) => option.id === requestedId)
-  const selectedId = requestedId && !unknownSelection ? requestedId : options[0]?.id ?? ''
+  const selectedId = requestedId && !unknownSelection ? requestedId : defaultId
 
   const setView = (nextView: TimetableView) => {
     const next = new URLSearchParams(params)
@@ -79,19 +109,25 @@ export default function Timetables() {
     )
   }
 
-  const sessions = sessionsForView(data, view, selectedId)
+  const sessions = officialView
+    ? officialSessionsForView(officialView, view, selectedId)
+    : sessionsForView(data, view, selectedId)
   const viewConflicts = conflictsForView(data, view, selectedId)
 
   return (
     <div>
       <PageHeader
         title="Timetables"
-        subtitle="Monday–Friday, P1–P9 with a lunch divider and the event-only P10–P13 band. Demo data — not solver output and not validator-checked."
+        subtitle={
+          usingOfficial
+            ? 'Published solver output from the FastAPI backend, adapted into group, faculty and room views.'
+            : 'Monday–Friday, P1–P9 with a lunch divider and the event-only P10–P13 band. Demo data — generate a schedule in Official Data to replace it.'
+        }
       />
 
       <p className="mb-4 text-xs text-slate-500">
-        {data.sessions.length} demo sessions · {data.groups.length} groups · {data.faculty.length}{' '}
-        faculty · {data.rooms.length} rooms
+        {usingOfficial ? 'Official schedule' : 'Demo data'} · {data.sessions.length} sessions ·{' '}
+        {data.groups.length} groups · {data.faculty.length} faculty · {data.rooms.length} rooms
       </p>
 
       {/* View switching */}

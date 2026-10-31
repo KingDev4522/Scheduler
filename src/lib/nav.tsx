@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import {
   CalendarCheck2,
   CalendarDays,
+  CalendarPlus,
   CalendarRange,
   ClipboardCheck,
   DatabaseBackup,
@@ -11,6 +12,7 @@ import {
   LayoutDashboard,
   LifeBuoy,
   Sparkles,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react'
 import type { Role } from './auth'
@@ -18,12 +20,14 @@ import Dashboard from '../pages/Dashboard'
 import Timetables from '../pages/Timetables'
 import Rooms from '../pages/Rooms'
 import Bookings from '../pages/Bookings'
+import ManualBooking from '../pages/ManualBooking'
 import Changes from '../pages/Changes'
 import Exams from '../pages/Exams'
 import Assistant from '../pages/Assistant'
 import Approvals from '../pages/Approvals'
 import AdminImportExport from '../pages/AdminImportExport'
 import OfficialData from '../pages/OfficialData'
+import Workspace from '../pages/Workspace'
 import Help from '../pages/Help'
 
 const ALL: Role[] = ['admin', 'event_manager', 'department_coordinator', 'faculty']
@@ -49,8 +53,10 @@ export const NAV: NavItem[] = [
   { path: '/rooms', label: 'Rooms', icon: DoorOpen, group: 'Scheduling', roles: ALL, element: <Rooms /> },
   { path: '/exams', label: 'Exams', icon: GraduationCap, group: 'Scheduling', roles: ADMIN_COORD, element: <Exams /> },
   { path: '/bookings', label: 'Bookings', icon: CalendarCheck2, group: 'Workflow', roles: ALL, element: <Bookings /> },
+  { path: '/manual', label: 'Manual Booking', icon: CalendarPlus, group: 'Workflow', roles: ALL, element: <ManualBooking /> },
   { path: '/changes', label: 'Changes', icon: GitCompareArrows, group: 'Workflow', roles: ADMIN_COORD, element: <Changes /> },
-  { path: '/assistant', label: 'AI Assistant', icon: Sparkles, group: 'Workflow', roles: ADMIN_COORD, element: <Assistant /> },
+  { path: '/assistant', label: 'AI Assistant', icon: Sparkles, group: 'Workflow', roles: ALL, element: <Assistant /> },
+  { path: '/workspace', label: 'My Workspace', icon: UserRound, group: 'Workflow', roles: ALL, element: <Workspace /> },
   { path: '/approvals', label: 'Approvals', icon: ClipboardCheck, group: 'Workflow', roles: ADMIN_COORD, element: <Approvals /> },
   { path: '/admin', label: 'Import / Exports', icon: DatabaseBackup, group: 'System', roles: ADMIN_ONLY, element: <AdminImportExport /> },
   { path: '/help', label: 'Help', icon: LifeBuoy, group: 'System', roles: ALL, element: <Help /> },

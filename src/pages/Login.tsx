@@ -20,19 +20,17 @@ export default function Login() {
 
   if (user) return <Navigate to="/" replace />
 
-  const signIn = (u: string, p: string) => {
+  const signIn = async (u: string, p: string) => {
     setBusy(true)
-    // Small delay keeps the UI state honest (loading -> result)
-    window.setTimeout(() => {
-      const result = login(u, p)
-      if (result.ok) {
-        setError(null)
-        navigate('/', { replace: true })
-      } else {
-        setError(result.error)
-        setBusy(false)
-      }
-    }, 250)
+    setError(null)
+    const result = await login(u, p)
+    if (result.ok) {
+      setError(null)
+      navigate('/', { replace: true })
+    } else {
+      setError(result.error)
+      setBusy(false)
+    }
   }
 
   const handleSubmit = (e: FormEvent) => {
@@ -41,7 +39,7 @@ export default function Login() {
       setError('Enter both username and password.')
       return
     }
-    signIn(username, password)
+    void signIn(username, password)
   }
 
   return (
@@ -133,7 +131,7 @@ export default function Login() {
                   key={acct.username}
                   type="button"
                   disabled={busy}
-                  onClick={() => signIn(acct.username, '1234')}
+                  onClick={() => void signIn(acct.username, '1234')}
                   className="flex w-full items-center justify-between rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-left text-sm text-neutral-300 transition-colors hover:border-neutral-500/60 hover:bg-neutral-800 disabled:opacity-60"
                 >
                   <span className="font-medium">{acct.username}</span>
@@ -145,7 +143,7 @@ export default function Login() {
         </form>
 
         <p className="mt-4 text-center text-xs text-neutral-600">
-          Demo credentials are stored in your browser's localStorage only.
+          Demo password for all accounts: <span className="font-mono text-neutral-400">1234</span>
         </p>
       </div>
     </div>

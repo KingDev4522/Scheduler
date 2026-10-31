@@ -19,18 +19,30 @@ Required by the problem statement (`12_DEPLOYMENT_SUBMISSION_PRD.md`). Listed fr
 | `tailwindcss`, `@tailwindcss/vite` | ^4.3.3 | Styling | MIT |
 | `vite`, `@vitejs/plugin-react` | ^8.3.5 / ^6.1.2 | Build tooling | MIT |
 | `typescript` | ^7.0.2 | Type checking | Apache-2.0 |
+| `vitest` | ^4.1.12 | Frontend unit tests | MIT |
 | `@types/react`, `@types/react-dom` | ^19.3.0 | Type definitions | MIT |
 
 No purchased templates or third-party UI kits beyond the MIT/Apache libraries above.
 
-## 2. Engine (Python)
+`src/components/Particles.tsx` is adapted from Bencho (<https://bencho.dev>), MIT licensed
+(<https://bencho.dev/licence>). Comments are preserved; React event typing and responsive canvas
+sizing were adapted for this project.
 
-| Package | Version | Purpose | License |
+## 2. Engine and backend (Python)
+
+| Package / service | Version | Purpose | License / terms |
 |---|---|---|---|
 | `ortools` | >= 9.10 | CP-SAT solver for timetable and exams | Apache-2.0 |
-| Python standard library | 3.8+ | JSON, CLI, unittest | PSF |
+| `fastapi` | >= 0.115 | HTTP API | MIT |
+| `uvicorn` | >= 0.30 | ASGI server | BSD-3-Clause |
+| `python-multipart` | >= 0.0.9 | File uploads | Apache-2.0 |
+| `python-dotenv` | >= 1.0 | Load `.env` secrets | BSD-3-Clause |
+| `httpx` | >= 0.27 | Gemini HTTP client + API tests | BSD-3-Clause |
+| `pydantic` | via FastAPI | Draft schema validation | MIT |
+| `pytest` | >= 8.0 | Backend tests | MIT |
+| **Google Gemini API** | `gemini-3.6-flash` | Natural-language request extraction (server-side) | Google Gemini API terms; key not committed |
 
-Install: `python -m pip install -r solver/requirements.txt`.
+Python standard library (3.8+) provides JSON, CLI, SQLite and `unittest`.
 
 ## 3. Organizer starter pack (bundled, unmodified)
 

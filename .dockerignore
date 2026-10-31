@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.gitignore
+.commandcode
+.agents
+.venv
+venv
+__pycache__
+*.pyc
+*.sqlite3
+backend/tests
+exports/api
+docs
+pytest.ini
+*.md
+!CrunchWeek_StarterPack/README.md

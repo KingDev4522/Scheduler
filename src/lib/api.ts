@@ -3,9 +3,21 @@
  * Set `VITE_API_BASE_URL` for deployment; defaults to localhost:8000.
  */
 
+const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)
 export const API_BASE =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ??
-  'http://localhost:8000'
+  configuredBase !== undefined
+    ? configuredBase.replace(/\/$/, '')
+    : import.meta.env.DEV
+      ? 'http://localhost:8000'
+      : ''
+
+export interface AuthUser {
+  username: string
+  role: 'admin' | 'event_manager' | 'department_coordinator' | 'faculty'
+  displayName: string
+  department?: string | null
+  initials: string
+}
 
 export interface OfficialCounts {
   rooms: number
@@ -210,9 +222,97 @@ export interface Health {
   hard_violations: number | null
 }
 
+export interface BookingWindow {
+  day: string
+  from_period: number
+  to_period: number
+}
+
+export interface BookingDraft {
+  title: string
+  attendance: number | null
+  duration_periods: number | null
+  windows: BookingWindow[]
+  room_types: string[]
+  needs: string[]
+  requested_room: string | null
+  mandatory_for_groups: string[]
+}
+
+export interface BookingProposalPayload extends BookingDraft {
+  requester?: string
+  requested_category?: string | null
+  day?: string | null
+  start_period?: number | null
+  raw_text?: string
+}
+
+export interface BookingAlternative {
+  room_id: string
+  day: string
+  start_period: number
+  end_period: number
+  capacity: number
+  type: string
+}
+
+export interface BookingValidation {
+  ok: boolean
+  violations: string[]
+  alternatives: BookingAlternative[]
+  category?: string
+}
+
+export interface AssistantParseResult {
+  source: string
+  model: string
+  draft: Partial<BookingDraft> & Record<string, unknown>
+  follow_up: string[]
+}
+
+export interface AvailabilityEntry {
+  day: string
+  periods: number[]
+  reason?: string
+}
+
+export interface ChangeRequestRecord {
+  id: string
+  requester: string
+  role: string
+  text: string
+  draft: Record<string, unknown>
+  follow_up: string[]
+  model: string
+  status: 'pending' | 'approved' | 'rejected'
+  submitted_at: string
+  decided_by?: string | null
+  decided_at?: string | null
+  reason?: string | null
+}
+
+export interface BookingSubmission extends Record<string, unknown> {
+  id: string
+  title?: string
+  requester?: string
+  status: string
+  submitted_at?: string
+  day?: string
+  start_period?: number
+  end_period?: number
+  room_id?: string
+  reason?: string | null
+  decided_by?: string | null
+  windows?: BookingWindow[]
+  attendance?: number
+  duration_periods?: number
+}
+
 async function request<T>(path: string, init: RequestInit = {}, user = 'debjeet'): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('x-demo-user', user)
+  const token = localStorage.getItem('cit-scheduler:token')
+  if (token) headers.set('authorization', `Bearer ${token}`)
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`
@@ -231,6 +331,17 @@ async function request<T>(path: string, init: RequestInit = {}, user = 'debjeet'
 
 export const api = {
   base: API_BASE,
+  login: (username: string, password: string) =>
+    request<{ token: string; user: AuthUser }>(
+      '/api/auth/login',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      },
+      username,
+    ),
+  me: (user = 'debjeet') => request<{ user: AuthUser }>('/api/auth/me', {}, user),
   health: (user = 'debjeet') => request<Health>('/api/health', {}, user),
   dataset: (user = 'debjeet') => request<DatasetInfo>('/api/dataset', {}, user),
   schedule: (user = 'debjeet') => request<ScheduleResponse>('/api/schedule', {}, user),
@@ -286,4 +397,124 @@ export const api = {
     return request<DisruptionResult>('/api/disruption', { method: 'POST', body: form }, user)
   },
   exportUrl: (name: string) => `${API_BASE}/api/exports/${name}`,
+  assistantStatus: (user = 'debjeet') =>
+    request<{ configured: boolean; model: string; models?: string[]; fallback?: string }>(
+      '/api/assistant/status',
+      {},
+      user,
+    ),
+  assistantParse: (text: string, kind: 'booking' | 'change' = 'booking', user = 'debjeet') =>
+    request<AssistantParseResult>(
+      '/api/assistant/parse',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text, kind }),
+      },
+      user,
+    ),
+  validateBooking: (payload: BookingProposalPayload, user = 'debjeet') =>
+    request<BookingValidation>(
+      '/api/bookings/validate',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      user,
+    ),
+  cancelBooking: (requestId: string, reason: string, user = 'debjeet') =>
+    request<{ ok: boolean; status: string }>(
+      `/api/bookings/${requestId}/cancel`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      },
+      user,
+    ),
+  facultyAvailability: (facultyId: string | undefined, user = 'debjeet') =>
+    request<{
+      faculty_id: string
+      name: string
+      department: string
+      unavailable: AvailabilityEntry[]
+    }>(
+      `/api/faculty/availability${facultyId ? `?faculty_id=${encodeURIComponent(facultyId)}` : ''}`,
+      {},
+      user,
+    ),
+  setFacultyAvailability: (
+    unavailable: AvailabilityEntry[],
+    user = 'debjeet',
+    facultyId?: string,
+  ) =>
+    request<{
+      faculty_id: string
+      name: string
+      department: string
+      unavailable: AvailabilityEntry[]
+    }>(
+      '/api/faculty/availability',
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ unavailable, faculty_id: facultyId }),
+      },
+      user,
+    ),
+  changeRequests: (user = 'debjeet') =>
+    request<{ items: ChangeRequestRecord[] }>('/api/change-requests', {}, user),
+  createChangeRequest: (text: string, user = 'debjeet') =>
+    request<ChangeRequestRecord>(
+      '/api/change-requests',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text }),
+      },
+      user,
+    ),
+  decideChangeRequest: (
+    requestId: string,
+    decision: 'approved' | 'rejected',
+    reason: string,
+    user = 'debjeet',
+  ) =>
+    request<{ ok: boolean; status: string }>(
+      `/api/change-requests/${requestId}/decide`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision, reason }),
+      },
+      user,
+    ),
+  submitBooking: (payload: BookingProposalPayload, user = 'debjeet') =>
+    request<{ ok: boolean; status: string; request: BookingSubmission }>(
+      '/api/bookings/submit',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      user,
+    ),
+  listBookings: (user = 'debjeet') =>
+    request<{ items: BookingSubmission[] }>('/api/bookings', {}, user),
+  decideBookingSubmission: (
+    requestId: string,
+    decision: 'approved' | 'rejected',
+    reason: string,
+    user = 'debjeet',
+  ) =>
+    request<{ ok: boolean; status: string }>(
+      `/api/bookings/${encodeURIComponent(requestId)}/decide`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ decision, reason }),
+      },
+      user,
+    ),
 }
