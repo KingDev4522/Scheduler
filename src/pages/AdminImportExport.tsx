@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { StatCard } from '../components/StatCard'
+import { OfficialBackendPanel } from '../components/OfficialBackendPanel'
 import { StatusNotice } from '../components/States'
 import { useAuth } from '../lib/auth'
 import {
@@ -265,10 +266,12 @@ export default function AdminImportExport() {
     <div>
       <PageHeader
         title="Import / exports"
-        subtitle="The official starter pack is present. Load cit_public.json to validate and store the real dataset; the engine below still runs on labelled demo data until the official pipeline is wired."
+        subtitle="Generate the official timetable, exams and Spectra decisions with the CP-SAT backend, then inspect them in Official Data. The demo panel below remains available for the browser-only build."
       />
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+
+      <OfficialBackendPanel />
 
       {/* Official dataset */}
       <section className="mb-5 rounded-xl border border-neutral-200 bg-white p-4">

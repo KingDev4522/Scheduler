@@ -53,7 +53,8 @@ export default function Dashboard() {
   if (!user || !stats) return null
 
   const isAdmin = user.role === 'admin'
-  const isEventManager = user.role === 'event_manager'
+  const isFaculty = user.role === 'faculty'
+  const isStaffView = user.role === 'event_manager' || isFaculty
 
   const cards = isAdmin
     ? [
@@ -69,12 +70,19 @@ export default function Dashboard() {
           { icon: AlertTriangle, label: 'Open conflicts', value: stats.conflicts, hint: 'recomputed from current data', tone: 'rose' as const },
           { icon: Building2, label: 'Avg room utilisation', value: `${stats.averageUtilisation}%`, hint: `${data.rooms.length} rooms · demo sessions`, tone: 'emerald' as const },
         ]
-      : [
-          { icon: CalendarCheck2, label: 'My requests', value: stats.myRequests, hint: 'submitted by you', tone: 'neutral' as const },
-          { icon: CheckCircle2, label: 'Approved', value: stats.myApproved, hint: 'venue confirmed', tone: 'emerald' as const },
-          { icon: XCircle, label: 'Rejected / alternative', value: stats.myRejected, hint: 'needs your review', tone: 'rose' as const },
-          { icon: Clock3, label: 'In review', value: stats.myPending, hint: 'decision pending', tone: 'amber' as const },
-        ]
+      : isFaculty
+        ? [
+            { icon: CalendarCheck2, label: 'Teaching sessions', value: data.sessions.length, hint: 'in the demo timetable', tone: 'neutral' as const },
+            { icon: Building2, label: 'Rooms', value: data.rooms.length, hint: 'room finder available', tone: 'emerald' as const },
+            { icon: AlertTriangle, label: 'Open conflicts', value: stats.conflicts, hint: 'recomputed from current data', tone: 'rose' as const },
+            { icon: Clock3, label: 'My requests', value: stats.myPending, hint: 'awaiting a decision', tone: 'amber' as const },
+          ]
+        : [
+            { icon: CalendarCheck2, label: 'My requests', value: stats.myRequests, hint: 'submitted by you', tone: 'neutral' as const },
+            { icon: CheckCircle2, label: 'Approved', value: stats.myApproved, hint: 'venue confirmed', tone: 'emerald' as const },
+            { icon: XCircle, label: 'Rejected / alternative', value: stats.myRejected, hint: 'needs your review', tone: 'rose' as const },
+            { icon: Clock3, label: 'In review', value: stats.myPending, hint: 'decision pending', tone: 'amber' as const },
+          ]
 
   const submitDecision = (decision: Decision, reason: string) => {
     if (!target) return
@@ -120,10 +128,10 @@ export default function Dashboard() {
           <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <h3 className="text-sm font-semibold text-slate-900">
-                {isEventManager ? 'Your pending requests' : 'Pending decisions'}
+                {isStaffView ? 'Your pending requests' : 'Pending decisions'}
               </h3>
               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                {isEventManager
+                {isStaffView
                   ? 'Approvers decide these'
                   : `${stats.actionableDecisions} actionable by you`}
               </span>

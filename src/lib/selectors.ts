@@ -50,9 +50,9 @@ export function sessionWindowLabel(session: Session): string {
 /* Booking visibility and decisions                                    */
 /* ------------------------------------------------------------------ */
 
-/** Event managers see only their own requests; approvers see everything. */
+/** Club representatives and faculty see only their own requests; approvers see everything. */
 export function visibleBookings(data: AppData, user: SessionUser): Booking[] {
-  if (user.role === 'event_manager') {
+  if (user.role === 'event_manager' || user.role === 'faculty') {
     return data.bookings.filter((booking) => booking.requester === user.username)
   }
   return data.bookings
@@ -85,9 +85,11 @@ export interface PendingDecision {
 export function pendingDecisions(data: AppData, user: SessionUser): PendingDecision[] {
   const items: PendingDecision[] = []
   const conflicts = derivedConflicts(data)
+  const ownOnly = user.role === 'event_manager' || user.role === 'faculty'
 
   for (const booking of data.bookings) {
     if (booking.status !== 'pending') continue
+    if (ownOnly && booking.requester !== user.username) continue
     const permission = bookingDecisionPermission(data, booking, user)
     const bookingConflicts = conflicts
       .filter((conflict) => conflict.bookingIds?.includes(booking.id))
@@ -107,6 +109,7 @@ export function pendingDecisions(data: AppData, user: SessionUser): PendingDecis
 
   for (const proposal of data.proposals) {
     if (proposal.status !== 'pending') continue
+    if (ownOnly && proposal.requester !== user.username) continue
     const canDecide = user.role === 'admin' && proposal.requester !== user.username
     items.push({
       kind: 'change',

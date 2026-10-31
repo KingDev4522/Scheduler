@@ -1,0 +1,629 @@
+{
+  "policy_version": "dataset-default",
+  "priority_order": [
+    "exam",
+    "regular_session",
+    "institute_event",
+    "guest_lecture",
+    "department_event",
+    "club_event"
+  ],
+  "approver": "admin",
+  "stats": {
+    "approved": 21,
+    "rejected": 2,
+    "alternative": 2
+  },
+  "approvals": [
+    {
+      "request_id": "BR-01",
+      "status": "alternative_offered",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
+    },
+    {
+      "request_id": "BR-11a",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "institute_event placed in OAT within the requested window"
+    },
+    {
+      "request_id": "BR-11b",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "institute_event placed in OAT within the requested window"
+    },
+    {
+      "request_id": "BR-20",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "institute_event placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-16",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "institute_event placed in OAT within the requested window"
+    },
+    {
+      "request_id": "BR-03",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "guest_lecture placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-19",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "guest_lecture placed in CR-105 within the requested window"
+    },
+    {
+      "request_id": "BR-08",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "department_event placed in CR-105 within the requested window"
+    },
+    {
+      "request_id": "BR-13",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "department_event placed in CR-103 within the requested window"
+    },
+    {
+      "request_id": "BR-18",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "department_event placed in CIVIL-LAB within the requested window"
+    },
+    {
+      "request_id": "BR-02",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in CS-LAB-1 within the requested window"
+    },
+    {
+      "request_id": "BR-06",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-05a",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05b",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05c",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05d",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05e",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-07",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-10",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-12",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in LH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-14",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in SH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-15",
+      "status": "approved",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "club_event placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-17",
+      "status": "alternative_offered",
+      "decided_by": "admin",
+      "decided_role": "admin",
+      "decided_at": "2026-10-31T12:55:35.804802+00:00",
+      "policy_version": "dataset-default",
+      "policy_order": [
+        "exam",
+        "regular_session",
+        "institute_event",
+        "guest_lecture",
+        "department_event",
+        "club_event"
+      ],
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
+    }
+  ],
+  "decisions": [
+    {
+      "request_id": "BR-01",
+      "status": "alternative_offered",
+      "day": "MON",
+      "start_period": 1,
+      "end_period": 2,
+      "room_id": "AUD",
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
+    },
+    {
+      "request_id": "BR-11a",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 6,
+      "end_period": 9,
+      "room_id": "OAT",
+      "reason": "institute_event placed in OAT within the requested window"
+    },
+    {
+      "request_id": "BR-11b",
+      "status": "approved",
+      "day": "FRI",
+      "start_period": 6,
+      "end_period": 9,
+      "room_id": "OAT",
+      "reason": "institute_event placed in OAT within the requested window"
+    },
+    {
+      "request_id": "BR-20",
+      "status": "approved",
+      "day": "FRI",
+      "start_period": 4,
+      "end_period": 5,
+      "room_id": "AUD",
+      "reason": "institute_event placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-16",
+      "status": "approved",
+      "day": "FRI",
+      "start_period": 10,
+      "end_period": 13,
+      "room_id": "OAT",
+      "reason": "institute_event placed in OAT within the requested window"
+    },
+    {
+      "request_id": "BR-03",
+      "status": "approved",
+      "day": "WED",
+      "start_period": 6,
+      "end_period": 7,
+      "room_id": "AUD",
+      "reason": "guest_lecture placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-19",
+      "status": "approved",
+      "day": "MON",
+      "start_period": 9,
+      "end_period": 9,
+      "room_id": "CR-105",
+      "reason": "guest_lecture placed in CR-105 within the requested window"
+    },
+    {
+      "request_id": "BR-08",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 8,
+      "end_period": 8,
+      "room_id": "CR-105",
+      "reason": "department_event placed in CR-105 within the requested window"
+    },
+    {
+      "request_id": "BR-13",
+      "status": "approved",
+      "day": "WED",
+      "start_period": 10,
+      "end_period": 11,
+      "room_id": "CR-103",
+      "reason": "department_event placed in CR-103 within the requested window"
+    },
+    {
+      "request_id": "BR-18",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 6,
+      "end_period": 8,
+      "room_id": "CIVIL-LAB",
+      "reason": "department_event placed in CIVIL-LAB within the requested window"
+    },
+    {
+      "request_id": "BR-02",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 6,
+      "end_period": 11,
+      "room_id": "CS-LAB-1",
+      "reason": "club_event placed in CS-LAB-1 within the requested window"
+    },
+    {
+      "request_id": "BR-06",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 10,
+      "end_period": 11,
+      "room_id": "SH-1",
+      "reason": "club_event placed in SH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-05a",
+      "status": "approved",
+      "day": "MON",
+      "start_period": 11,
+      "end_period": 12,
+      "room_id": "SH-2",
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05b",
+      "status": "approved",
+      "day": "TUE",
+      "start_period": 11,
+      "end_period": 12,
+      "room_id": "SH-2",
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05c",
+      "status": "approved",
+      "day": "WED",
+      "start_period": 11,
+      "end_period": 12,
+      "room_id": "SH-2",
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05d",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 11,
+      "end_period": 12,
+      "room_id": "SH-2",
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-05e",
+      "status": "approved",
+      "day": "FRI",
+      "start_period": 11,
+      "end_period": 12,
+      "room_id": "SH-2",
+      "reason": "club_event placed in SH-2 within the requested window"
+    },
+    {
+      "request_id": "BR-04",
+      "status": "rejected",
+      "reason": "Request was cancelled"
+    },
+    {
+      "request_id": "BR-07",
+      "status": "approved",
+      "day": "THU",
+      "start_period": 10,
+      "end_period": 12,
+      "room_id": "AUD",
+      "reason": "club_event placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-09",
+      "status": "rejected",
+      "reason": "No room matching type, capacity, needs and availability within the requested windows"
+    },
+    {
+      "request_id": "BR-10",
+      "status": "approved",
+      "day": "FRI",
+      "start_period": 1,
+      "end_period": 9,
+      "room_id": "SH-1",
+      "reason": "club_event placed in SH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-12",
+      "status": "approved",
+      "day": "TUE",
+      "start_period": 9,
+      "end_period": 9,
+      "room_id": "LH-1",
+      "reason": "club_event placed in LH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-14",
+      "status": "approved",
+      "day": "WED",
+      "start_period": 11,
+      "end_period": 12,
+      "room_id": "SH-1",
+      "reason": "club_event placed in SH-1 within the requested window"
+    },
+    {
+      "request_id": "BR-15",
+      "status": "approved",
+      "day": "FRI",
+      "start_period": 10,
+      "end_period": 12,
+      "room_id": "AUD",
+      "reason": "club_event placed in AUD within the requested window"
+    },
+    {
+      "request_id": "BR-17",
+      "status": "alternative_offered",
+      "day": "MON",
+      "start_period": 1,
+      "end_period": 2,
+      "room_id": "OAT",
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
+    }
+  ]
+}

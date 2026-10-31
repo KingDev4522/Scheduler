@@ -358,7 +358,10 @@ export function canDecideBooking(
     return { allowed: true }
   }
 
-  return { allowed: false, reason: 'Event managers track their requests; an approver decides them.' }
+  return {
+    allowed: false,
+    reason: 'Only an Admin or the owning department coordinator can decide requests.',
+  }
 }
 
 export type DecisionOutcome =

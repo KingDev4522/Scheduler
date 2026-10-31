@@ -30,6 +30,11 @@ target/
 .env.local
 *.pem
 
+# Backend runtime state
+backend/*.sqlite3
+backend/*.sqlite3-*
+exports/api/
+
 # Agent skills & design tooling (local only, never commit)
 .agents/
 .taste-skill/

@@ -39,12 +39,12 @@ Status values: **PROPOSED** (default in force, user has not confirmed), **CONFIR
 |---|---|
 | Date | 2026-10-31 |
 | Question | D3: The problem statement describes Admin, Department Coordinator, Faculty and Club Representative. The app ships 3 demo accounts. Add a 4th? |
-| Decision | **Keep three accounts.** `event_manager` is treated as the club-representative role for demo purposes. Do not invent a Faculty account or a fourth demo credential. |
-| Source | `AGENT_IMPLEMENTATION_PLAN.md` §1 DECISION D3; `src/lib/auth.tsx` |
-| Alternatives | Add a fourth account — deferred until the user confirms the mapping. |
-| Owner | User (unanswered) · Agent acting on documented default |
-| Status | **PROPOSED** — default in force |
-| Impact | Faculty-specific journeys (own timetable, unavailability marking) are not exposed. Every role gate uses the existing `Role` union. Adding a role later requires a `Role` union change, a `NAV` rules pass and a seed-account change. |
+| Decision | **Four accounts are required by the problem statement** (`12_DEPLOYMENT_SUBMISSION_PRD.md` §Mandatory artifacts: four working demo role accounts). The app now ships Admin (`debjeet`), Club Representative (`mehul`, internal id `event_manager`), Department Coordinator (`indranil`) and Faculty (`ananya`, added 2026-10-31). |
+| Source | `12_DEPLOYMENT_SUBMISSION_PRD.md`; `04_PHASE_4_AI_AUTH_FRONTEND.md` §6; `src/lib/auth.tsx` |
+| Alternatives | Keep three accounts — rejected: it would fail a mandatory submission artifact. |
+| Owner | Agent |
+| Status | **RESOLVED** (2026-10-31) |
+| Impact | `Role` gains `faculty`; login/Help/README list four accounts; faculty sees Dashboard, Timetables, Rooms, Bookings and Help, scoped to their own requests. Existing browsers gain the account via `ensureSeedUsers` merge. |
 
 ## DEC-004 — Documentation numbering
 
@@ -175,4 +175,30 @@ Status values: **PROPOSED** (default in force, user has not confirmed), **CONFIR
 | Owner | Agent |
 | Status | **CONFIRMED** |
 | Impact | Phase 1's "import the official dataset with a clear summary" and "invalid input produces useful errors" criteria are met (verified: 7/7 counts, and path-level errors for duplicate id / unknown reference / missing collection / malformed JSON). The official `schedule.json` export is still Phase 2. |
+
+## DEC-014 — Phase 2 engine is an offline CP-SAT CLI
+
+| Field | Value |
+|---|---|
+| Date | 2026-10-31 |
+| Question | The Phase 2 engine needs OR-Tools, which the browser cannot run. How does the app get a schedule? |
+| Decision | Phase 2 is a Python CP-SAT package under `solver/` (`data`, `weekly`, `exams`, `bookings`, `export`, `run`). `python -m solver.run` solves, exports `exports/schedule.json` and `exports/schedule_after.json`, runs the official validator unmodified, exits non-zero on any hard violation, and publishes the artifacts to `public/exports/` for the SPA to display. No live service is added; D1 stays (A) for the app. |
+| Source | `02_PHASE_2_SCHEDULING_ENGINE.md`; user instruction 2026-10-31 |
+| Alternatives | A FastAPI/OR-Tools service callable from the browser (D1 = B/C) — deferred; a generate button needs it. |
+| Owner | Agent |
+| Status | **CONFIRMED** |
+| Impact | Phase 2 exit gate met: 189/189 sessions and 41/41 exams, 0 hard violations in both exports, soft penalty 12, booking score 67/70, disruptions move 10 sessions. The SPA can show the artifacts but cannot trigger a solve until a backend exists. |
+
+## DEC-015 — Phase 3 engine scope under D1 = A
+
+| Field | Value |
+|---|---|
+| Date | 2026-10-31 |
+| Question | Phase 3 requires priority decisions, approvals, minimal-move rescheduling and manual scheduling. How much is implemented without a backend? |
+| Decision | Implement the full decision pipeline in the engine: configurable priority policy, Admin-only approvals with `requester != approver`, validated alternatives, official disruption processing, an exact diff with a minimality proof, and a manual-placement validator. The engine emits **proposal artifacts** (`schedule_after.json`, `schedule_diff.json`, `booking_decisions*.json`); it does not silently mutate a published state. UI wiring and a shared approval service are deferred (Phase 4 / D1 = B/C). |
+| Source | `03_PHASE_3_BOOKINGS_RESCHEDULING.md`; `05_BOOKINGS_AND_PRIORITY_PRD.md`; `06_RESCHEDULING_PRD.md` |
+| Alternatives | Build an official bookings UI now — deferred to Phase 4, which owns the frontend. |
+| Owner | Agent |
+| Status | **CONFIRMED** |
+| Impact | All 16 Phase 3 acceptance criteria are met at the engine level and covered by 17 tests. Booking score 64.5/70, 0 inversions, disruption moves 9 sessions (minimal), both exports 0 hard violations. The app screens still use the demo store. No `session_overrides` (class-displacing events are offered as alternatives). |
 

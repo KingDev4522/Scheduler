@@ -8,12 +8,13 @@ import {
 } from 'react'
 import { KEYS, readJSON, removeKey, writeJSON } from './storage'
 
-export type Role = 'admin' | 'event_manager' | 'department_coordinator'
+export type Role = 'admin' | 'event_manager' | 'department_coordinator' | 'faculty'
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Administrator',
-  event_manager: 'Event Manager',
+  event_manager: 'Club Representative',
   department_coordinator: 'Department Coordinator',
+  faculty: 'Faculty',
 }
 
 export interface StoredUser {
@@ -53,15 +54,38 @@ const SEED_USERS: StoredUser[] = [
     displayName: 'Indranil',
     department: 'CSE',
   },
+  {
+    username: 'ananya',
+    password: '1234',
+    role: 'faculty',
+    displayName: 'Dr. Ananya Mishra',
+    department: 'CSE',
+  },
 ]
 
 const MAX_ATTEMPTS = 5
 const LOCK_MS = 30_000
 
-/** Called once at startup: makes sure demo users exist in localStorage. */
+/**
+ * Called once at startup: makes sure every demo user exists in localStorage.
+ * It merges by username, so existing browsers gain a newly added demo account
+ * without losing local data.
+ */
 export function ensureSeedUsers(): void {
   const existing = readJSON<StoredUser[] | null>(KEYS.users, null)
-  if (!existing || existing.length === 0) writeJSON(KEYS.users, SEED_USERS)
+  if (!existing || existing.length === 0) {
+    writeJSON(KEYS.users, SEED_USERS)
+    return
+  }
+  const merged = [...existing]
+  let changed = false
+  for (const seed of SEED_USERS) {
+    if (!merged.some((user) => user.username === seed.username)) {
+      merged.push(seed)
+      changed = true
+    }
+  }
+  if (changed) writeJSON(KEYS.users, merged)
 }
 
 export function initialsOf(name: string): string {

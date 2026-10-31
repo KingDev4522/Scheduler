@@ -9,6 +9,7 @@ const DEMO_ROWS = [
   { username: 'debjeet', password: '1234', role: 'admin' as const },
   { username: 'mehul', password: '1234', role: 'event_manager' as const },
   { username: 'indranil', password: '1234', role: 'department_coordinator' as const },
+  { username: 'ananya', password: '1234', role: 'faculty' as const },
 ]
 
 export default function Help() {

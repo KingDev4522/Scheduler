@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   CalendarCheck2,
+  CalendarDays,
   CalendarRange,
   ClipboardCheck,
   DatabaseBackup,
@@ -22,9 +23,10 @@ import Exams from '../pages/Exams'
 import Assistant from '../pages/Assistant'
 import Approvals from '../pages/Approvals'
 import AdminImportExport from '../pages/AdminImportExport'
+import OfficialData from '../pages/OfficialData'
 import Help from '../pages/Help'
 
-const ALL: Role[] = ['admin', 'event_manager', 'department_coordinator']
+const ALL: Role[] = ['admin', 'event_manager', 'department_coordinator', 'faculty']
 const ADMIN_COORD: Role[] = ['admin', 'department_coordinator']
 const ADMIN_ONLY: Role[] = ['admin']
 
@@ -43,6 +45,7 @@ export interface NavItem {
 export const NAV: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview', roles: ALL, element: <Dashboard /> },
   { path: '/timetables', label: 'Timetables', icon: CalendarRange, group: 'Scheduling', roles: ALL, element: <Timetables /> },
+  { path: '/official', label: 'Official Data', icon: CalendarDays, group: 'Scheduling', roles: ALL, element: <OfficialData /> },
   { path: '/rooms', label: 'Rooms', icon: DoorOpen, group: 'Scheduling', roles: ALL, element: <Rooms /> },
   { path: '/exams', label: 'Exams', icon: GraduationCap, group: 'Scheduling', roles: ADMIN_COORD, element: <Exams /> },
   { path: '/bookings', label: 'Bookings', icon: CalendarCheck2, group: 'Workflow', roles: ALL, element: <Bookings /> },

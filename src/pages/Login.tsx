@@ -7,6 +7,7 @@ const DEMO_ACCOUNTS = [
   { username: 'debjeet', role: 'admin' as const },
   { username: 'mehul', role: 'event_manager' as const },
   { username: 'indranil', role: 'department_coordinator' as const },
+  { username: 'ananya', role: 'faculty' as const },
 ]
 
 export default function Login() {

@@ -2,9 +2,9 @@
 
 A role-aware campus scheduling and venue management web app — conflict-free timetables, exam scheduling, venue bookings with priority, disruption repair, and auditable approvals. Built for the CIT problem statement (189 teaching sessions, 41 midsems, 25 Spectra requests).
 
-**Current state:** the working app plus the **official starter pack**. The real `cit_public.json` (27 rooms, 40 faculty, 14 groups, 62 courses, 189 sessions, 25 bookings, 41 exams) loads and validates with all count targets matching. The app has a role-aware dashboard, room finder, Spectra bookings board with audited decisions, a weekly timetable grid (group / faculty / room), a deterministic scheduling engine with an independent validator, disruption repair with an approval inbox, and a provisional importer with actionable errors.
+**Current state:** the working app, the official starter pack, and the **Phase 2 + Phase 3 engines**. The real `cit_public.json` loads and validates. `python -m solver.run` generates `exports/schedule.json` and `exports/schedule_after.json`; both pass the official validator with **0 hard violations** (189/189 sessions, 41/41 exams, soft penalty 12, booking score 64.5/70, disruption moves only 9 sessions — minimal). Phase 3 adds a configurable priority policy, Admin-only approvals with self-approval blocking, official disruption processing, and an exact before/after diff.
 
-**Not yet built:** official `exports/schedule.json` generation and the validator run (Phase 2), exams scheduling, AI assistant, deployment. Demo data remains a labelled placeholder until the scheduler is wired to the official dataset.
+**Not yet built:** official bookings/diff UI wiring (screens still show demo data), live in-app generation (needs a backend), AI assistant, deployment.
 
 ## Quick start
 
@@ -19,10 +19,11 @@ npm run build    # type-check + production build
 | Username | Password | Role |
 |---|---|---|
 | `debjeet` | `1234` | Administrator |
-| `mehul` | `1234` | Event Manager |
+| `mehul` | `1234` | Club Representative |
 | `indranil` | `1234` | Department Coordinator |
+| `ananya` | `1234` | Faculty |
 
-One-click sign-in buttons are available on the login screen. Credentials and all app data are stored **only in your browser's localStorage** — no backend, no network calls.
+One-click sign-in buttons are available on the login screen. Demo credentials and app data stay in the browser's localStorage; the official dataset is fetched as a static asset (`/data/cit_public.json`). The CP-SAT engine is a separate Python CLI — see "Phase 2/3 engine" below.
 
 ## Sidebar & roles
 
@@ -33,15 +34,15 @@ Navigation lives in a [shadcn/ui Sidebar](https://ui.shadcn.com/docs/components/
 - **Persistent** — the expanded/collapsed choice is stored in localStorage and restored on reload
 - **User menu** — the footer avatar opens a dropdown with the signed-in role and *Sign out*
 
-| Section | Admin | Coord. | Event Mgr |
-|---|:--:|:--:|:--:|
-| Dashboard | ✅ | ✅ | ✅ |
-| Timetables, Rooms | ✅ | ✅ | ✅ |
-| Exams | ✅ | ✅ | — |
-| Bookings | ✅ | ✅ | ✅ |
-| Changes, AI Assistant, Approvals | ✅ | ✅ | — |
-| Import / Exports | ✅ | — | — |
-| Help | ✅ | ✅ | ✅ |
+| Section | Admin | Coord. | Club Rep | Faculty |
+|---|:--:|:--:|:--:|:--:|
+| Dashboard | ✅ | ✅ | ✅ | ✅ |
+| Timetables, Rooms | ✅ | ✅ | ✅ | ✅ |
+| Exams | ✅ | ✅ | — | — |
+| Bookings | ✅ | ✅ | ✅ | ✅ |
+| Changes, AI Assistant, Approvals | ✅ | ✅ | — | — |
+| Import / Exports | ✅ | — | — | — |
+| Help | ✅ | ✅ | ✅ | ✅ |
 
 ## Project structure
 
@@ -83,6 +84,11 @@ Navigation lives in a [shadcn/ui Sidebar](https://ui.shadcn.com/docs/components/
     │   ├── import.ts          ← provisional schema validation + import summary
     │   ├── time.ts            ← period/day model (P1–P9, lunch, P10–P13)
     │   └── storage.ts         ← typed localStorage helpers
+    ├── (python) solver/
+    │   ├── data.py · weekly.py · exams.py · bookings.py
+    │   ├── policy.py · approvals.py · diff.py · manual.py
+    │   ├── export.py · run.py · tests/
+    │   └── requirements.txt
     ├── components/            ← AppShell + AppSidebar (shadcn Sidebar), PageHeader,
     │                            StatCard, States, Badges, DecisionDialog, TimetableGrid
     │   └── ui/                ← shadcn primitives: sidebar, sheet, tooltip,
@@ -148,7 +154,8 @@ Phase 1 contracts (all copied from the starter pack):
 6. ✅ Change proposals: faculty-leave / room-closure repair, diff preview, Admin approval
 7. ✅ Approvals inbox: pending queue, decision history, audit
 8. ✅ Official dataset import (`cit_public.json`, 7/7 counts) + Phase 1 contracts from source
-9. ⬜ Wire the official dataset into the scheduler and generate `exports/schedule.json` (Phase 2)
-10. ⬜ Exams scheduling (41 midsems, half capacity, AM/PM)
-11. ⬜ AI assistant (NL/Hinglish extraction) with deterministic validation
-12. ⬜ Official validator run and deployment
+9. ✅ Phase 2 engine: CP-SAT timetable + exams + bookings → validated `exports/schedule.json` (0 hard violations)
+10. ✅ Phase 3: configurable priority policy, Admin-only approvals, official disruption, minimal-move diff
+11. ⬜ Official bookings/diff UI, live in-app generation (needs a backend — D1 = B/C)
+12. ⬜ AI assistant (NL/Hinglish extraction) with deterministic validation
+13. ⬜ Deployment and submission artifacts
