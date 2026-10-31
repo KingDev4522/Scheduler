@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { MotionConfig } from 'framer-motion'
 import { ShieldAlert } from 'lucide-react'
 import { AuthProvider, ROLE_LABEL, useAuth, type Role } from './lib/auth'
 import { NAV } from './lib/nav'
@@ -19,9 +20,7 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }
   if (!roles.includes(user.role)) {
     return (
       <div className="mx-auto max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-          <ShieldAlert className="h-6 w-6" aria-hidden />
-        </span>
+        <ShieldAlert className="mx-auto mb-4 h-7 w-7 text-neutral-600" aria-hidden />
         <h2 className="text-lg font-semibold text-slate-900">You don't have access to this page</h2>
         <p className="mt-2 text-sm text-slate-500">
           This section is limited to{' '}
@@ -30,7 +29,7 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }
         </p>
         <a
           href="/"
-          className="mt-5 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+          className="mt-5 inline-block rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-800"
         >
           Back to dashboard
         </a>
@@ -42,32 +41,34 @@ function RequireRole({ roles, children }: { roles: Role[]; children: ReactNode }
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            element={
-              <RequireAuth>
-                <AppShell />
-              </RequireAuth>
-            }
-          >
-            {NAV.map((item) => (
-              <Route
-                key={item.path}
-                path={item.path}
-                element={
-                  <RequireRole roles={item.roles}>
-                    {item.element}
-                  </RequireRole>
-                }
-              />
-            ))}
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <MotionConfig reducedMotion="user">
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              element={
+                <RequireAuth>
+                  <AppShell />
+                </RequireAuth>
+              }
+            >
+              {NAV.map((item) => (
+                <Route
+                  key={item.path}
+                  path={item.path}
+                  element={
+                    <RequireRole roles={item.roles}>
+                      {item.element}
+                    </RequireRole>
+                  }
+                />
+              ))}
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </MotionConfig>
   )
 }

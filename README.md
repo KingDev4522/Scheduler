@@ -2,7 +2,9 @@
 
 A role-aware campus scheduling and venue management web app — conflict-free timetables, exam scheduling, venue bookings with priority, disruption repair, and auditable approvals. Built for the CIT problem statement (189 teaching sessions, 41 midsems, 25 Spectra requests).
 
-**Current state:** application shell is live — sidebar navigation, login with three demo roles, role-aware dashboard with working approvals (localStorage persistence). Modules below are scaffolded and land next.
+**Current state:** the working app plus the **official starter pack**. The real `cit_public.json` (27 rooms, 40 faculty, 14 groups, 62 courses, 189 sessions, 25 bookings, 41 exams) loads and validates with all count targets matching. The app has a role-aware dashboard, room finder, Spectra bookings board with audited decisions, a weekly timetable grid (group / faculty / room), a deterministic scheduling engine with an independent validator, disruption repair with an approval inbox, and a provisional importer with actionable errors.
+
+**Not yet built:** official `exports/schedule.json` generation and the validator run (Phase 2), exams scheduling, AI assistant, deployment. Demo data remains a labelled placeholder until the scheduler is wired to the official dataset.
 
 ## Quick start
 
@@ -24,7 +26,12 @@ One-click sign-in buttons are available on the login screen. Credentials and all
 
 ## Sidebar & roles
 
-Navigation lives entirely in a sidebar, grouped as **Overview / Scheduling / Workflow / System**. Items a role cannot use are hidden *and* blocked at the route level.
+Navigation lives in a [shadcn/ui Sidebar](https://ui.shadcn.com/docs/components/radix/sidebar) (`SidebarProvider` → `Sidebar` + `SidebarInset`), grouped as **Overview / Scheduling / Workflow / System**. Items a role cannot use are hidden *and* blocked at the route level.
+
+- **Collapsible icon rail** — the sidebar narrows to icons with tooltips; the edge rail strip or the header trigger toggles it (`Ctrl`/`⌘+B` works too)
+- **Mobile** — under 768px the sidebar becomes a slide-in sheet, closed automatically on navigation
+- **Persistent** — the expanded/collapsed choice is stored in localStorage and restored on reload
+- **User menu** — the footer avatar opens a dropdown with the signed-in role and *Sign out*
 
 | Section | Admin | Coord. | Event Mgr |
 |---|:--:|:--:|:--:|
@@ -40,25 +47,69 @@ Navigation lives entirely in a sidebar, grouped as **Overview / Scheduling / Wor
 
 ```
 ├── README.md                  ← you are here
+├── CrunchWeek_StarterPack/    ← organizer pack (read-only): README, validator.py, data/, examples/
 ├── docs/                      ← product & engineering documentation
 │   ├── 00_START_HERE.md       ← documentation index (start here)
 │   ├── 01_MASTER_PRODUCT_PRD.md
 │   ├── 02_DATA_AND_VALIDATOR_CONTRACT.md
 │   ├── …                      ← PRDs 03–17
+│   ├── starter-pack-inventory.md  ← every pack file + SHA-256 + how it is consumed
+│   ├── data-dictionary.md     ← official fields from the starter README
+│   ├── validator-contract.md  ← official H1–H14 / B1–B3 / E1–E2 / S1–S6
+│   ├── disruption-contract.md ← official change-file format
+│   ├── export-schema.md       ← official schedule.json / schedule_after.json
+│   ├── booking-examples.md    ← official sample requests + priority/caps
 │   └── 17_DOCUMENTATION_TEMPLATES.md
+├── .env.example               ← placeholders only; `.env` is git-ignored
+├── public/data/cit_public.json ← served copy of the official dataset
 ├── index.html                 ← Vite entry
 ├── vite.config.ts             ← React + Tailwind plugins
 └── src/
     ├── main.tsx               ← bootstrap + demo-user seeding
     ├── App.tsx                ← routes + auth/role guards
+    ├── engine/
+    │   ├── types.ts           ← solver/validator contracts
+    │   ├── input.ts           ← data adapter + legal windows
+    │   ├── solver.ts          ← deterministic backtracking (MRV) + repair
+    │   ├── validate.ts        ← independent hard-constraint checks
+    │   ├── soft.ts            ← provisional soft-penalty weights
+    │   └── disruption.ts      ← disruption spec → repair constraints
     ├── lib/
     │   ├── auth.tsx           ← login, session, roles, rate-limiting
     │   ├── nav.tsx            ← single source of truth: sidebar + routes + access
-    │   ├── store.ts           ← localStorage data layer (rooms, bookings, approvals, audit)
+    │   ├── store.ts           ← localStorage data layer + booking/apply mutations
+    │   ├── selectors.ts       ← shared derived data (conflicts, utilisation, queues)
+    │   ├── dataset.ts         ← official cit_public.json loader + validation
+    │   ├── import.ts          ← provisional schema validation + import summary
+    │   ├── time.ts            ← period/day model (P1–P9, lunch, P10–P13)
     │   └── storage.ts         ← typed localStorage helpers
-    ├── components/            ← AppShell (sidebar/topbar), PageHeader, StatCard
-    └── pages/                 ← Login, Dashboard, Help + module scaffolds
+    ├── components/            ← AppShell + AppSidebar (shadcn Sidebar), PageHeader,
+    │                            StatCard, States, Badges, DecisionDialog, TimetableGrid
+    │   └── ui/                ← shadcn primitives: sidebar, sheet, tooltip,
+    │                            dropdown-menu, button, input, separator, skeleton
+    └── pages/                 ← Login, Dashboard, Rooms, Bookings, Timetables,
+                                 Changes, Approvals, AdminImportExport, Help
+                                 + scaffolds for Exams and AI Assistant
 ```
+
+## Demo data and the engine
+
+- The app ships **25 demo teaching sessions** and **25 Spectra requests** so every screen is
+  exercisable. Demo data is always labelled and is never claimed to be official or
+  validator-passing output.
+- The Admin page can **generate** a timetable with `src/engine/solver.ts`: deterministic
+  backtracking with minimum-remaining-values variable choice, respecting capacity, room type,
+  room/faculty/group overlap, lunch and 3-hour-lab starts, daily faculty limits and approved
+  bookings.
+- A separate validator (`src/engine/validate.ts`) re-checks the finished schedule. **Apply is only
+  enabled when the validator reports zero hard violations.**
+- **Official import** (`src/lib/dataset.ts`) parses the real `cit_public.json`, checks required fields,
+  duplicate ids, references and the 7 expected counts, and stores it under `cit-scheduler:dataset`.
+  The pack's JSON and CSV mirrors were verified to carry identical records.
+- **Provisional import** (`src/lib/import.ts`) validates the demo schema and reports path-level errors
+  before anything is written. Official `exports/schedule.json` generation is Phase 2.
+- Soft-constraint weights in the demo engine are provisional heuristics; the **official** S1–S6
+  weights and booking score are now documented from `validator.py` (`docs/validator-contract.md`).
 
 ## Documentation
 
@@ -69,11 +120,35 @@ Full PRD set lives in [`docs/`](docs/00_START_HERE.md):
 - [09_FRONTEND_UX_PRD.md](docs/09_FRONTEND_UX_PRD.md) — screens and interaction rules
 - [13_IMPLEMENTATION_PLAN.md](docs/13_IMPLEMENTATION_PLAN.md) — work breakdown and demo plan
 
+Agent-facing docs live in [`docs/agent/`](docs/agent/FRONTEND_GUIDE.md):
+
+- [FRONTEND_GUIDE.md](docs/agent/FRONTEND_GUIDE.md) — file map, data flow, conventions for UI work
+- [ARCHITECTURE.md](docs/agent/ARCHITECTURE.md) — layers, boundaries, API/interface contracts
+- [PHASE_1_COMPLETION.md](docs/agent/PHASE_1_COMPLETION.md) — item-by-item Phase 1 acceptance matrix
+- [BRIEFING.md](docs/agent/BRIEFING.md) — product rules, constraints, acceptance gates
+- [DECISIONS.md](docs/agent/DECISIONS.md) — open and settled decisions
+- [GAP_MAP.md](docs/agent/GAP_MAP.md) — what is built vs placeholder
+
+Phase 1 contracts (all copied from the starter pack):
+
+- [starter-pack-inventory.md](docs/starter-pack-inventory.md) — every pack file, SHA-256, how it is consumed
+- [data-dictionary.md](docs/data-dictionary.md) — official fields, counts, invariants
+- [validator-contract.md](docs/validator-contract.md) — official CLI, H1–H14 / B1–B3 / E1–E2 / S1–S6
+- [disruption-contract.md](docs/disruption-contract.md) — official change-file format
+- [export-schema.md](docs/export-schema.md) — official `schedule.json` / `schedule_after.json`
+- [booking-examples.md](docs/booking-examples.md) — official requests, priority order and role caps
+
 ## Roadmap
 
 1. ✅ Shell: sidebar UI, auth (3 roles), role-aware dashboard
-2. ⬜ Timetable grid + rooms finder with real dataset import
-3. ⬜ Bookings + Spectra decision board (all 25 requests)
-4. ⬜ Exams, change proposals and approvals inbox
-5. ⬜ AI assistant (NL/Hinglish extraction) with deterministic validation
-6. ⬜ Import/export, validator results, deployment
+2. ✅ Rooms finder with availability filters
+3. ✅ Bookings board: all 25 Spectra requests, role-scoped audited decisions, no self-approval
+4. ✅ Timetable grid: Mon–Fri × P1–P9, lunch divider, P10–P13 event band, three views
+5. ✅ Demo constraint engine: generate → independent validation → apply
+6. ✅ Change proposals: faculty-leave / room-closure repair, diff preview, Admin approval
+7. ✅ Approvals inbox: pending queue, decision history, audit
+8. ✅ Official dataset import (`cit_public.json`, 7/7 counts) + Phase 1 contracts from source
+9. ⬜ Wire the official dataset into the scheduler and generate `exports/schedule.json` (Phase 2)
+10. ⬜ Exams scheduling (41 midsems, half capacity, AM/PM)
+11. ⬜ AI assistant (NL/Hinglish extraction) with deterministic validation
+12. ⬜ Official validator run and deployment

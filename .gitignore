@@ -30,4 +30,8 @@ target/
 .env.local
 *.pem
 
+# Agent skills & design tooling (local only, never commit)
+.agents/
+.taste-skill/
+
 .commandcode

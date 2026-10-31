@@ -4,7 +4,9 @@ export const KEYS = {
   users: 'cit-scheduler:users',
   session: 'cit-scheduler:session',
   data: 'cit-scheduler:data',
+  dataset: 'cit-scheduler:dataset',
   loginAttempts: 'cit-scheduler:login-attempts',
+  sidebarOpen: 'cit-scheduler:sidebar-open',
 } as const
 
 export function readJSON<T>(key: string, fallback: T): T {
