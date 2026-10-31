@@ -308,7 +308,8 @@ def health() -> dict:
 
 
 @app.get("/api/dataset")
-def dataset() -> dict:
+def dataset(x_demo_user: str = Header(default="debjeet")) -> dict:
+    _actor(x_demo_user)
     raw = STATE["raw"]
     if raw is None:
         raise HTTPException(status_code=409, detail="no dataset loaded")
@@ -362,7 +363,8 @@ def generate(x_demo_user: str = Header(default="debjeet"), seconds: float = 90.0
 
 
 @app.get("/api/schedule")
-def schedule() -> dict:
+def schedule(x_demo_user: str = Header(default="debjeet")) -> dict:
+    _actor(x_demo_user)
     if STATE["schedule"] is None:
         raise HTTPException(status_code=404, detail="no schedule generated")
     return {

@@ -13,12 +13,12 @@ Status values: **PROPOSED** (default in force, user has not confirmed), **CONFIR
 |---|---|
 | Date | 2026-10-31 |
 | Question | D1: browser-only localStorage (A), FastAPI + PostgreSQL + OR-Tools (B), or hybrid (C)? |
-| Decision | **(A) Browser-only** — continue the existing Vite/React/TypeScript SPA and `localStorage` persistence. No Python service, database or solver process is scaffolded. |
-| Source | `AGENT_IMPLEMENTATION_PLAN.md` §1 DECISION D1 (default until the user answers) |
-| Alternatives | (B) and (C) are preserved as future options; `AGENT_IMPLEMENTATION_PLAN.md` Sprint 4 is the gated decision point. |
-| Owner | User (unanswered) · Agent acting on documented default |
-| Status | **PROPOSED** — default in force |
-| Impact | Phase 1 Workstreams B/C backend deliverables (FastAPI, PostgreSQL, Alembic, Docker Compose, Celery) are **not** executed. All domain logic lands in TypeScript under `src/lib` and `src/engine` (Sprint 4). Phase 1 documentation deliverables still apply unchanged. |
+| Decision | **(C) Hybrid** — the React SPA stays the UI; a FastAPI service under `backend/` wraps the Python OR-Tools CP-SAT engine, persists state in SQLite, and exposes generation, validation, policy, proposal approval, manual validation and exports. The in-browser TypeScript engine remains for demo/fallback. |
+| Source | `AGENT_IMPLEMENTATION_PLAN.md` §1 D1; user instruction 2026-10-31 (set up a backend) |
+| Alternatives | (A) browser-only was the earlier default; (B) full backend replaces the SPA engine — neither is current. |
+| Owner | User · Agent |
+| Status | **CONFIRMED** (2026-10-31) |
+| Impact | Backend runs at `:8000`; `backend/store.py` (SQLite) is the system of record; `backend/tests` covers 10 API behaviours. The SPA calls the API from Admin and Official Data. |
 
 ## DEC-002 — Starter pack
 
@@ -201,4 +201,17 @@ Status values: **PROPOSED** (default in force, user has not confirmed), **CONFIR
 | Owner | Agent |
 | Status | **CONFIRMED** |
 | Impact | All 16 Phase 3 acceptance criteria are met at the engine level and covered by 17 tests. Booking score 64.5/70, 0 inversions, disruption moves 9 sessions (minimal), both exports 0 hard violations. The app screens still use the demo store. No `session_overrides` (class-displacing events are offered as alternatives). |
+
+## DEC-016 — Backend, SQLite and the proposal gate
+
+| Field | Value |
+|---|---|
+| Date | 2026-10-31 |
+| Question | How do the Phase 2/3 engines become usable by judges in the deployed app? |
+| Decision | Add a FastAPI service (`backend/app.py`) over `solver/`, with SQLite persistence (`backend/store.py`, `DATABASE_PATH`) and a demo-identity header. Generation writes validated exports; a disruption creates a **pending proposal** and `schedule_after.json` is only published after Admin approval; manual placements are validated but never auto-applied; the priority order is admin-configurable via `GET/PUT /api/policy`. |
+| Source | `12_DEPLOYMENT_SUBMISSION_PRD.md`; `03_PHASE_3_BOOKINGS_RESCHEDULING.md` §9–10; user instruction 2026-10-31 |
+| Alternatives | Offline CLI only — rejected: judges must be able to reset, generate and apply change files in the app. |
+| Owner | Agent |
+| Status | **CONFIRMED** |
+| Impact | Backend tests: 10/10. The SPA gains **Official Data** and an Admin engine panel. State survives restart. Deployment and video remain. |
 

@@ -2,17 +2,28 @@
 
 A role-aware campus scheduling and venue management web app — conflict-free timetables, exam scheduling, venue bookings with priority, disruption repair, and auditable approvals. Built for the CIT problem statement (189 teaching sessions, 41 midsems, 25 Spectra requests).
 
-**Current state:** the working app, the official starter pack, and the **Phase 2 + Phase 3 engines**. The real `cit_public.json` loads and validates. `python -m solver.run` generates `exports/schedule.json` and `exports/schedule_after.json`; both pass the official validator with **0 hard violations** (189/189 sessions, 41/41 exams, soft penalty 12, booking score 64.5/70, disruption moves only 9 sessions — minimal). Phase 3 adds a configurable priority policy, Admin-only approvals with self-approval blocking, official disruption processing, and an exact before/after diff.
+**Current state:** the working app, the official starter pack, and the **Phase 2 + Phase 3 engines** with a FastAPI backend. The real `cit_public.json` loads and validates. `python -m solver.run` generates `exports/schedule.json` and `exports/schedule_after.json`; both pass the official validator with **0 hard violations** (189/189 sessions, 41/41 exams, soft penalty 3, booking score 63/70, disruption moves 12 sessions — minimal). Phase 3 adds a configurable priority policy, Admin-only approvals with self-approval blocking, a proposal approval gate, official disruption processing, and an exact diff.
 
-**Not yet built:** official bookings/diff UI wiring (screens still show demo data), live in-app generation (needs a backend), AI assistant, deployment.
+**Not yet built:** live deployment, the ≤5-minute video, manual booking form with AI disabled, AI/Hinglish parsing. Official generation, approvals and the official-data UI are live.
 
 ## Quick start
 
+Two processes: the SPA and the scheduling API.
+
 ```bash
+# terminal 1 — official scheduler API
+python -m pip install -r backend/requirements.txt
+python -m uvicorn backend.app:app --port 8000
+
+# terminal 2 — web app
 npm install
 npm run dev      # http://localhost:5173
 npm run build    # type-check + production build
 ```
+
+The Admin page has **Generate official schedule**; **Official Data** in the sidebar shows the
+official timetable, exams, booking decisions and disruption diff. Without the API, the app still
+runs on labelled demo data.
 
 ## Demo accounts
 
@@ -38,6 +49,7 @@ Navigation lives in a [shadcn/ui Sidebar](https://ui.shadcn.com/docs/components/
 |---|:--:|:--:|:--:|:--:|
 | Dashboard | ✅ | ✅ | ✅ | ✅ |
 | Timetables, Rooms | ✅ | ✅ | ✅ | ✅ |
+| Official Data | ✅ | ✅ | ✅ | ✅ |
 | Exams | ✅ | ✅ | — | — |
 | Bookings | ✅ | ✅ | ✅ | ✅ |
 | Changes, AI Assistant, Approvals | ✅ | ✅ | — | — |

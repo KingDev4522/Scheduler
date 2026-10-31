@@ -1,14 +1,50 @@
 # Architecture & Interface Contracts
 
-**Decision:** DEC-001 = **(A) browser-only**. There is no backend, database, Redis or solver process
-in the current build. This document describes what exists, the boundaries, and the contract we would
-implement if D1 changes to (B) or (C).
+**Decision:** DEC-001 = **(C) hybrid**. The SPA is the UI; the official scheduler is a Python
+FastAPI + OR-Tools CP-SAT service under `backend/` and `solver/`, with SQLite state. The in-browser
+TypeScript engine remains a demo/fallback. See `DEC-016`.
 
 Sources: `01_PHASE_1_FOUNDATION.md` §5–8, `10_BACKEND_API_DATABASE_PRD.md`, `AGENT_IMPLEMENTATION_PLAN.md`.
 
 ---
 
-## 1. Current architecture (D1 = A)
+## 1. Current architecture (D1 = C hybrid)
+
+```
+React SPA (src/) ──HTTP/JSON──▶ FastAPI (backend/app.py)
+                                  ├─ dataset import / validation
+                                  ├─ GET/PUT /api/policy
+                                  ├─ POST /api/generate            → solver/weekly.py + exams.py
+                                  ├─ POST /api/disruption          → proposal (not applied)
+                                  ├─ POST /api/proposal/approve|reject
+                                  ├─ POST /api/manual              → solver/manual.py
+                                  ├─ GET  /api/schedule
+                                  └─ GET  /api/exports/{name}
+                                        │
+                                        ▼
+                                  SQLite (backend/store.py)
+                                    dataset + generation payload
+```
+
+The official endpoints implemented:
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/api/health` | public | liveness, dataset, generated flag |
+| GET | `/api/dataset` | demo user | counts + entities for the UI |
+| POST | `/api/import` | Admin | upload and validate `cit_public.json` |
+| POST | `/api/generate` | Admin | solve timetable + exams + bookings, validate, export |
+| GET | `/api/schedule` | demo user | schedule, summary, decisions, approvals, diff, proposal status |
+| POST | `/api/disruption` | Admin | apply a change file → **pending proposal** + diff |
+| POST | `/api/proposal/approve` | Admin | publish `schedule_after.json` |
+| POST | `/api/proposal/reject` | Admin | discard the proposal |
+| GET/PUT | `/api/policy` | read / Admin | priority order; invalidates the generated schedule |
+| POST | `/api/manual` | Admin or Coordinator | validate a manual placement; never auto-applies |
+| POST | `/api/approve` | Admin | booking approval guard (`requester != approver`) |
+| GET | `/api/exports/{name}` | public | `schedule.json`, `schedule_after.json`, reports |
+| POST | `/api/reset` | Admin | reload the dataset and clear generated artifacts |
+
+### 1.1 Browser layer (demo/fallback)
 
 A single-page application with a deterministic, in-browser scheduling engine.
 
@@ -73,11 +109,24 @@ A single-page application with a deterministic, in-browser scheduling engine.
 
 ---
 
+### 2.1 Backend state (SQLite)
+
+`backend/store.py` persists the imported dataset and the last generation/proposal:
+
+| Table | Contents |
+|---|---|
+| `dataset` | raw `cit_public.json` + source + timestamp |
+| `generation` | schedule, placements, validator report, decisions, approvals, proposal, diff, policy order/version |
+
+`DATABASE_PATH` defaults to `backend/state.sqlite3` (git-ignored). `init_db()` creates the schema;
+state survives a backend restart (verified).
+
+---
+
 ## 3. Interface contracts
 
-`01_PHASE_1_FOUNDATION.md` §8 requires these to be agreed before parallel work. Under D1 = A there
-is no HTTP API, so each contract is recorded against the current internal equivalent and the future
-HTTP shape.
+`01_PHASE_1_FOUNDATION.md` §8 requires these to be agreed before parallel work. The HTTP surface is
+implemented (see §1); the rules below apply to it and to the browser fallback.
 
 ### 3.1 Naming and versioning
 

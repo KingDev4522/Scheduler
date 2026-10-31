@@ -10,17 +10,17 @@
   ],
   "approver": "admin",
   "stats": {
-    "approved": 21,
+    "approved": 20,
     "rejected": 2,
-    "alternative": 2
+    "alternative": 3
   },
   "approvals": [
     {
       "request_id": "BR-01",
-      "status": "alternative_offered",
+      "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -30,14 +30,14 @@
         "department_event",
         "club_event"
       ],
-      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
+      "reason": "institute_event placed in AUD within the requested window"
     },
     {
       "request_id": "BR-11a",
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -54,7 +54,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -68,10 +68,10 @@
     },
     {
       "request_id": "BR-20",
-      "status": "approved",
+      "status": "alternative_offered",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -81,14 +81,14 @@
         "department_event",
         "club_event"
       ],
-      "reason": "institute_event placed in AUD within the requested window"
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
     },
     {
       "request_id": "BR-16",
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -105,7 +105,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -122,7 +122,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -139,7 +139,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -156,7 +156,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -170,10 +170,10 @@
     },
     {
       "request_id": "BR-18",
-      "status": "approved",
+      "status": "alternative_offered",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -183,14 +183,14 @@
         "department_event",
         "club_event"
       ],
-      "reason": "department_event placed in CIVIL-LAB within the requested window"
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
     },
     {
       "request_id": "BR-02",
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -207,7 +207,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -224,7 +224,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -241,7 +241,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -258,7 +258,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -275,7 +275,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -292,7 +292,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -309,7 +309,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -326,7 +326,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -343,7 +343,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -360,7 +360,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -377,7 +377,7 @@
       "status": "approved",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -394,7 +394,7 @@
       "status": "alternative_offered",
       "decided_by": "admin",
       "decided_role": "admin",
-      "decided_at": "2026-10-31T12:55:16.906805+00:00",
+      "decided_at": "2026-10-31T14:39:41.332812+00:00",
       "policy_version": "dataset-default",
       "policy_order": [
         "exam",
@@ -410,12 +410,12 @@
   "decisions": [
     {
       "request_id": "BR-01",
-      "status": "alternative_offered",
+      "status": "approved",
       "day": "MON",
-      "start_period": 1,
-      "end_period": 2,
+      "start_period": 4,
+      "end_period": 5,
       "room_id": "AUD",
-      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
+      "reason": "institute_event placed in AUD within the requested window"
     },
     {
       "request_id": "BR-11a",
@@ -437,12 +437,12 @@
     },
     {
       "request_id": "BR-20",
-      "status": "approved",
-      "day": "FRI",
-      "start_period": 4,
-      "end_period": 5,
+      "status": "alternative_offered",
+      "day": "MON",
+      "start_period": 1,
+      "end_period": 2,
       "room_id": "AUD",
-      "reason": "institute_event placed in AUD within the requested window"
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
     },
     {
       "request_id": "BR-16",
@@ -491,12 +491,12 @@
     },
     {
       "request_id": "BR-18",
-      "status": "approved",
-      "day": "THU",
-      "start_period": 6,
-      "end_period": 8,
+      "status": "alternative_offered",
+      "day": "MON",
+      "start_period": 1,
+      "end_period": 3,
       "room_id": "CIVIL-LAB",
-      "reason": "department_event placed in CIVIL-LAB within the requested window"
+      "reason": "No slot inside the requested windows; a feasible slot outside them was offered"
     },
     {
       "request_id": "BR-02",

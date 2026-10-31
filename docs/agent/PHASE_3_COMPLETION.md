@@ -1,5 +1,18 @@
 # Phase 3 Completion Matrix
 
+## 0. Backend update (2026-10-31)
+
+The engine now runs behind FastAPI, and the system-level gaps are closed:
+
+- **Priority policy:** `GET/PUT /api/policy` (Admin), invalid permutations rejected; changing it invalidates the schedule and affects the next generate (verified: default score 63 vs custom 64.5).
+- **Approval gate:** a disruption creates `proposal_status = pending`; `schedule_after.json` returns 404 until `POST /api/proposal/approve`; reject discards it.
+- **Manual scheduling:** `POST /api/manual` validates against H2–H12 and never auto-applies; conflicts return 422 with rule IDs.
+- **Role enforcement:** demo identity header; Admin-only generate/reset/approve/policy, Admin or Coordinator for manual proposals.
+- **Persistence:** SQLite; generated schedule survives a restart.
+- **Tests:** 28 engine tests + 10 backend API tests pass. Latest result: soft 3, booking score 63/70, disruption 12 moved (minimal).
+
+---
+
 **Status: complete on the engine track.** All 16 acceptance criteria are met and covered by tests.
 The official artifacts are generated and validated; the app UI still renders the demo store until
 the official data is wired into the screens (Phase 4), and a live approval backend depends on D1.

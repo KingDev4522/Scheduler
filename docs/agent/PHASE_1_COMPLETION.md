@@ -1,7 +1,22 @@
 # Phase 1 Completion Matrix
 
-**Status: COMPLETE on the browser-only track (D1 = A).** The organizer starter pack was found at
-`CrunchWeek_StarterPack/`, so every Phase 1 research and import deliverable is now written from source.
+## 0. Update — backend adopted (2026-10-31)
+
+D1 changed to **(C) hybrid**. This supersedes the “N/A under D1 = A” rows below:
+
+- **Backend starts locally:** ✅ FastAPI (`backend/app.py`), health/generate/disruption/reset verified.
+- **Database + migrations:** ✅ SQLite (`backend/store.py`), schema initialised at startup; state survives a restart (verified).
+- **Pytest configured:** ✅ `pytest.ini`; 10 backend API tests pass (`python -m pytest -q backend/tests`).
+- **Environment variables:** ✅ `.env.example` now lists `VITE_API_BASE_URL`, `CORS_ORIGINS`, `DATABASE_PATH`.
+- **Architecture/API contracts:** ✅ `docs/agent/ARCHITECTURE.md` documents the hybrid backend and the HTTP surface.
+- **Official CSV columns into the app:** ⚠️ JSON is the official import path; CSV mirrors were verified identical but are not parsed by the official adapter.
+
+**Status: complete on the hybrid track**, with the CSV-adapter note and the external repo-provenance check remaining.
+
+---
+
+**Earlier status (browser-only track): COMPLETE.** The organizer starter pack was found at
+`CrunchWeek_StarterPack/`, so every Phase 1 research and import deliverable is written from source.
 The phase exit gate is met: the dataset, validator contract, time model, session representation,
 export format and disruption format can all be explained from the pack.
 

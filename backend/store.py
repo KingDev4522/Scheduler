@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -58,14 +59,25 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _db():
+    """Commit and always close. `with sqlite3.Connection` does not close."""
+    conn = connect()
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with connect() as conn:
+    with _db() as conn:
         conn.executescript(SCHEMA)
 
 
 def save_dataset(raw: dict[str, Any], source: str) -> None:
-    with connect() as conn:
+    with _db() as conn:
         conn.execute(
             "INSERT INTO dataset (id, raw, source, updated_at) VALUES (1, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET raw = excluded.raw, source = excluded.source, "
@@ -75,7 +87,7 @@ def save_dataset(raw: dict[str, Any], source: str) -> None:
 
 
 def load_dataset() -> tuple[dict[str, Any] | None, str | None]:
-    with connect() as conn:
+    with _db() as conn:
         row = conn.execute("SELECT raw, source FROM dataset WHERE id = 1").fetchone()
     if row is None:
         return None, None
@@ -84,7 +96,7 @@ def load_dataset() -> tuple[dict[str, Any] | None, str | None]:
 
 def save_state(state: dict[str, Any]) -> None:
     payload = {key: state.get(key) for key in STATE_FIELDS}
-    with connect() as conn:
+    with _db() as conn:
         conn.execute(
             "INSERT INTO generation (id, payload, updated_at) VALUES (1, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, "
@@ -94,7 +106,7 @@ def save_state(state: dict[str, Any]) -> None:
 
 
 def load_state() -> dict[str, Any]:
-    with connect() as conn:
+    with _db() as conn:
         row = conn.execute("SELECT payload FROM generation WHERE id = 1").fetchone()
     if row is None:
         return {}
@@ -106,5 +118,5 @@ def load_state() -> dict[str, Any]:
 
 
 def clear_generation() -> None:
-    with connect() as conn:
+    with _db() as conn:
         conn.execute("DELETE FROM generation WHERE id = 1")

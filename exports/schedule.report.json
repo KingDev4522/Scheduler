@@ -6,16 +6,16 @@
     "S1": 0,
     "S2": 0,
     "S3": 0,
-    "S4": 12,
+    "S4": 3,
     "S5": 0,
     "S6": 0
   },
-  "soft_total": 12,
+  "soft_total": 3,
   "bookings": {
-    "booking_score": 64.5,
+    "booking_score": 63.0,
     "booking_score_max_if_all_approved": 70,
-    "approved": 21,
-    "alternatives": 2,
+    "approved": 20,
+    "alternatives": 3,
     "rejected": 2,
     "session_overrides": 0,
     "priority_inversions": []
