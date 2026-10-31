@@ -5,19 +5,19 @@ export function StatCard({
   label,
   value,
   hint,
-  tone = 'indigo',
+  tone = 'neutral',
 }: {
   icon: LucideIcon
   label: string
   value: string | number
   hint?: string
-  tone?: 'indigo' | 'amber' | 'emerald' | 'rose'
+  tone?: 'neutral' | 'amber' | 'emerald' | 'rose'
 }) {
   const tones = {
-    indigo: 'bg-indigo-50 text-indigo-600',
-    amber: 'bg-amber-50 text-amber-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    rose: 'bg-rose-50 text-rose-600',
+    neutral: 'bg-neutral-100 text-neutral-900',
+    amber: 'bg-neutral-50 text-neutral-600',
+    emerald: 'bg-neutral-50 text-neutral-600',
+    rose: 'bg-neutral-50 text-neutral-600',
   } as const
 
   return (

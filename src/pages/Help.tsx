@@ -34,10 +34,8 @@ export default function Help() {
       <PageHeader
         title="Help & demo accounts"
         subtitle="Credentials, navigation scope and demo data controls"
-      />
-
-      {message && (
-        <div role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+      />        {message && (
+        <div role="status" className="mb-4 rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-800">
           {message}
         </div>
       )}
@@ -46,7 +44,7 @@ export default function Help() {
         {/* Demo accounts */}
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <KeyRound className="h-4 w-4 text-indigo-500" aria-hidden />
+            <KeyRound className="h-4 w-4 text-neutral-700" aria-hidden />
             Demo accounts
           </h3>
           <div className="mt-4 overflow-x-auto">
@@ -78,16 +76,12 @@ export default function Help() {
         {/* Your access */}
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <ShieldCheck className="h-4 w-4 text-indigo-500" aria-hidden />
+            <ShieldCheck className="h-4 w-4 text-neutral-700" aria-hidden />
             Your access as {ROLE_LABEL[user.role]}
           </h3>
-          <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <ul className="mt-4 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
             {allowedNav.map((item) => (
-              <li
-                key={item.path}
-                className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700"
-              >
-                <item.icon className="h-4 w-4 text-indigo-500" aria-hidden />
+              <li key={item.path} className="text-slate-700">
                 {item.label}
               </li>
             ))}
@@ -101,7 +95,7 @@ export default function Help() {
         {isAdmin && (
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <RotateCcw className="h-4 w-4 text-amber-500" aria-hidden />
+              <RotateCcw className="h-4 w-4 text-neutral-700" aria-hidden />
               Demo controls
             </h3>
             <p className="mt-2 text-sm text-slate-600">
@@ -111,7 +105,7 @@ export default function Help() {
             <button
               type="button"
               onClick={doReset}
-              className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100"
+              className="mt-4 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50"
             >
               Reset demo data
             </button>

@@ -6,12 +6,27 @@ import {
   ClipboardCheck,
   Clock3,
   AlertTriangle,
+  Lock,
   XCircle,
 } from 'lucide-react'
 import { ROLE_LABEL, useAuth } from '../lib/auth'
-import { decideApproval, getData, type AppData } from '../lib/store'
+import {
+  decideBooking,
+  decideProposal,
+  getData,
+  type AppData,
+} from '../lib/store'
+import {
+  dashboardStats,
+  derivedConflicts,
+  pendingDecisions,
+  roomUtilisation,
+  type PendingDecision,
+} from '../lib/selectors'
 import { PageHeader } from '../components/PageHeader'
 import { StatCard } from '../components/StatCard'
+import { EmptyState, StatusNotice } from '../components/States'
+import { DecisionDialog, type Decision } from '../components/DecisionDialog'
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts
@@ -27,77 +42,59 @@ function timeAgo(ts: number): string {
 export default function Dashboard() {
   const { user } = useAuth()
   const [data, setData] = useState<AppData>(getData)
-  const [flash, setFlash] = useState<string | null>(null)
+  const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [target, setTarget] = useState<PendingDecision | null>(null)
 
-  const isAdmin = user?.role === 'admin'
+  const stats = useMemo(() => (user ? dashboardStats(data, user) : null), [data, user])
+  const queue = useMemo(() => (user ? pendingDecisions(data, user) : []), [data, user])
+  const conflicts = useMemo(() => derivedConflicts(data), [data])
+  const utilisation = useMemo(() => roomUtilisation(data), [data])
 
-  const stats = useMemo(() => {
-    const pendingApprovals = data.approvals.filter((a) => a.status === 'pending')
-    const spectra = data.bookings.filter((b) => b.status !== 'cancelled')
-    const myRequests = data.bookings.filter((b) => b.requester === user?.username)
-    const avgUtil = Math.round(
-      data.rooms.reduce((sum, r) => sum + r.utilisation, 0) / Math.max(data.rooms.length, 1),
-    )
-    return { pendingApprovals, spectra, myRequests, avgUtil }
-  }, [data, user])
+  if (!user || !stats) return null
 
-  const decision = (id: string, result: 'approved' | 'rejected') => {
-    if (!user) return
-    const next = decideApproval(id, result, user.username)
-    setData({ ...next })
-    const item = next.approvals.find((a) => a.id === id)
-    setFlash(
-      `${result === 'approved' ? 'Approved' : 'Rejected'} ${item?.id ?? id} — "${
-        item?.title ?? ''
-      }". Decision recorded in the audit log.`,
-    )
-    window.setTimeout(() => setFlash(null), 6000)
-  }
+  const isAdmin = user.role === 'admin'
+  const isEventManager = user.role === 'event_manager'
 
-  if (!user) return null
-
-  const cards =
-    user.role === 'admin'
+  const cards = isAdmin
+    ? [
+        { icon: ClipboardCheck, label: 'Pending decisions', value: stats.pendingDecisions, hint: `${stats.actionableDecisions} you can decide`, tone: 'amber' as const },
+        { icon: CalendarCheck2, label: 'Spectra requests', value: stats.spectraActive, hint: `${stats.spectraPending} pending`, tone: 'neutral' as const },
+        { icon: AlertTriangle, label: 'Open conflicts', value: stats.conflicts, hint: 'recomputed from current data', tone: 'rose' as const },
+        { icon: Building2, label: 'Avg room utilisation', value: `${stats.averageUtilisation}%`, hint: `${data.rooms.length} rooms · demo sessions`, tone: 'emerald' as const },
+      ]
+    : user.role === 'department_coordinator'
       ? [
-          { icon: ClipboardCheck, label: 'Pending approvals', value: stats.pendingApprovals.length, hint: 'awaiting your decision', tone: 'amber' as const },
-          { icon: CalendarCheck2, label: 'Spectra requests', value: stats.spectra.length, hint: `${stats.spectra.filter((b) => b.status === 'pending').length} pending`, tone: 'indigo' as const },
-          { icon: AlertTriangle, label: 'Open conflicts', value: data.conflicts.length, hint: 'from last validation run', tone: 'rose' as const },
-          { icon: Building2, label: 'Avg room utilisation', value: `${stats.avgUtil}%`, hint: `${data.rooms.length} rooms`, tone: 'emerald' as const },
+          { icon: ClipboardCheck, label: 'Pending decisions', value: stats.pendingDecisions, hint: `${stats.actionableDecisions} in your scope`, tone: 'amber' as const },
+          { icon: CalendarCheck2, label: 'Spectra requests', value: stats.spectraActive, hint: `${stats.spectraPending} pending`, tone: 'neutral' as const },
+          { icon: AlertTriangle, label: 'Open conflicts', value: stats.conflicts, hint: 'recomputed from current data', tone: 'rose' as const },
+          { icon: Building2, label: 'Avg room utilisation', value: `${stats.averageUtilisation}%`, hint: `${data.rooms.length} rooms · demo sessions`, tone: 'emerald' as const },
         ]
-      : user.role === 'department_coordinator'
-        ? [
-            { icon: ClipboardCheck, label: 'Pending approvals', value: stats.pendingApprovals.length, hint: 'routed to you / admin', tone: 'amber' as const },
-            { icon: CalendarCheck2, label: 'My requests', value: stats.myRequests.length, hint: `${stats.myRequests.filter((b) => b.status === 'pending').length} pending`, tone: 'indigo' as const },
-            { icon: AlertTriangle, label: 'Open conflicts', value: data.conflicts.length, hint: 'department-related', tone: 'rose' as const },
-            { icon: Building2, label: 'Avg room utilisation', value: `${stats.avgUtil}%`, hint: `${data.rooms.length} rooms`, tone: 'emerald' as const },
-          ]
-        : [
-            { icon: CalendarCheck2, label: 'My requests', value: stats.myRequests.length, hint: 'submitted by you', tone: 'indigo' as const },
-            {
-              icon: CheckCircle2,
-              label: 'Approved',
-              value: stats.myRequests.filter((b) => b.status === 'approved').length,
-              hint: 'venue confirmed',
-              tone: 'emerald' as const,
-            },
-            {
-              icon: XCircle,
-              label: 'Rejected / alternative',
-              value: stats.myRequests.filter((b) => b.status === 'rejected' || b.status === 'alternative_offered').length,
-              hint: 'needs your review',
-              tone: 'rose' as const,
-            },
-            {
-              icon: Clock3,
-              label: 'In review',
-              value: stats.myRequests.filter((b) => b.status === 'pending').length,
-              hint: 'decision pending',
-              tone: 'amber' as const,
-            },
-          ]
+      : [
+          { icon: CalendarCheck2, label: 'My requests', value: stats.myRequests, hint: 'submitted by you', tone: 'neutral' as const },
+          { icon: CheckCircle2, label: 'Approved', value: stats.myApproved, hint: 'venue confirmed', tone: 'emerald' as const },
+          { icon: XCircle, label: 'Rejected / alternative', value: stats.myRejected, hint: 'needs your review', tone: 'rose' as const },
+          { icon: Clock3, label: 'In review', value: stats.myPending, hint: 'decision pending', tone: 'amber' as const },
+        ]
 
-  const visibleApprovals =
-    user.role === 'event_manager' ? [] : data.approvals
+  const submitDecision = (decision: Decision, reason: string) => {
+    if (!target) return
+    const result =
+      target.kind === 'booking'
+        ? decideBooking(target.id, decision, user, reason)
+        : decideProposal(target.id, decision, user, reason)
+
+    if (!result.ok) {
+      setFlash({ tone: 'error', message: result.error })
+      setTarget(null)
+      return
+    }
+    setData({ ...result.data })
+    setFlash({
+      tone: 'success',
+      message: `${target.id} ${decision === 'approved' ? 'approved' : 'rejected'}. The reason is recorded in the audit log.`,
+    })
+    setTarget(null)
+  }
 
   return (
     <div>
@@ -108,14 +105,7 @@ export default function Dashboard() {
         } · demo data stored locally`}
       />
 
-      {flash && (
-        <div
-          role="status"
-          className="mb-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-        >
-          {flash}
-        </div>
-      )}
+      {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
 
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -125,90 +115,66 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {/* Approvals */}
+        {/* Decision queue */}
         <section className="lg:col-span-2">
           <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <h3 className="text-sm font-semibold text-slate-900">
-                {user.role === 'event_manager' ? 'Recent activity' : 'Pending approvals'}
+                {isEventManager ? 'Your pending requests' : 'Pending decisions'}
               </h3>
-              {!isAdmin && user.role !== 'event_manager' && (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
-                  Decisions are Admin-only
-                </span>
-              )}
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500">
+                {isEventManager
+                  ? 'Approvers decide these'
+                  : `${stats.actionableDecisions} actionable by you`}
+              </span>
             </div>
 
             <div className="divide-y divide-slate-100">
-              {user.role === 'event_manager' ? (
-                data.audit.slice(0, 6).map((event) => (
-                  <div key={event.id} className="flex items-start gap-3 px-5 py-3.5">
-                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-indigo-400" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-slate-700">{event.action}</p>
-                      <p className="text-xs text-slate-400">
-                        {event.actor} · {timeAgo(event.at)}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : visibleApprovals.length === 0 ? (
-                <p className="px-5 py-8 text-center text-sm text-slate-400">
-                  Nothing waiting — approvals inbox is clear.
-                </p>
+              {queue.length === 0 ? (
+                <div className="px-5 py-6">
+                  <EmptyState
+                    icon={CheckCircle2}
+                    title="Nothing waiting"
+                    description="Every pending request has a decision. New requests appear here automatically."
+                  />
+                </div>
               ) : (
-                visibleApprovals.map((approval) => (
-                  <div key={approval.id} className="px-5 py-4">
+                queue.map((item) => (
+                  <div key={`${item.kind}-${item.id}`} className="px-5 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800">{approval.title}</p>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {approval.id} · from <span className="font-medium">{approval.requester}</span> ·{' '}
-                          {approval.route} · {timeAgo(approval.submittedAt)}
-                        </p>
-                      </div>
-                      {approval.status === 'pending' ? (
-                        isAdmin ? (
-                          <div className="flex shrink-0 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => decision(approval.id, 'approved')}
-                              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => decision(approval.id, 'rejected')}
-                              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-                            Pending
+                        <p className="text-sm font-medium text-slate-800">
+                          <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                            {item.kind === 'booking' ? 'Booking' : 'Change'}
                           </span>
-                        )
-                      ) : (
-                        <span
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                            approval.status === 'approved'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-rose-100 text-rose-700'
-                          }`}
+                          {item.title}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {item.id} · from <span className="font-medium">{item.requester}</span> ·{' '}
+                          {timeAgo(item.submittedAt)}
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{item.detail}</p>
+                        {item.conflicts.length > 0 && (
+                          <p className="mt-1 text-xs leading-relaxed text-neutral-700">
+                            ⚠ {item.conflicts.join('; ')}
+                          </p>
+                        )}
+                      </div>
+
+                      {item.canDecide ? (
+                        <button
+                          type="button"
+                          onClick={() => setTarget(item)}
+                          className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-neutral-800"
                         >
-                          {approval.status === 'approved' ? 'Approved' : 'Rejected'}
+                          Decide
+                        </button>
+                      ) : (
+                        <span className="inline-flex max-w-[15rem] shrink-0 items-start gap-1 text-[11px] leading-snug text-slate-400">
+                          <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                          {item.blockedReason}
                         </span>
                       )}
-                      <p className="w-full text-xs leading-relaxed text-slate-500">
-                        {approval.detail}
-                        {approval.conflicts.length > 0 && (
-                          <span className="mt-1 block text-rose-600">
-                            ⚠ Conflict: {approval.conflicts.join('; ')}
-                          </span>
-                        )}
-                      </p>
                     </div>
                   </div>
                 ))
@@ -221,29 +187,26 @@ export default function Dashboard() {
         <div className="space-y-5">
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-900">Room utilisation</h3>
-            <p className="text-xs text-slate-400">Top rooms, demo values</p>
+            <p className="text-xs text-slate-400">Derived from demo sessions + approved bookings</p>
             <ul className="mt-4 space-y-3">
-              {[...data.rooms]
-                .sort((a, b) => b.utilisation - a.utilisation)
+              {[...utilisation]
+                .sort((a, b) => b.percent - a.percent)
                 .slice(0, 5)
-                .map((room) => (
-                  <li key={room.id}>
+                .map((row) => (
+                  <li key={row.room.id}>
                     <div className="flex items-baseline justify-between text-xs">
-                      <span className="font-medium text-slate-700">{room.name}</span>
-                      <span className="text-slate-400">{room.utilisation}%</span>
+                      <span className="font-medium text-slate-700">{row.room.name}</span>
+                      <span className="text-slate-400">{row.percent}%</span>
                     </div>
                     <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className={`h-full rounded-full ${
-                          room.utilisation >= 80
-                            ? 'bg-rose-400'
-                            : room.utilisation >= 60
-                              ? 'bg-amber-400'
-                              : 'bg-emerald-400'
-                        }`}
-                        style={{ width: `${room.utilisation}%` }}
+                        className="h-full rounded-full bg-neutral-500"
+                        style={{ width: `${Math.max(row.percent, 1)}%` }}
                       />
                     </div>
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      {row.occupiedPeriods} of {row.capacityPeriods} weekly periods
+                    </p>
                   </li>
                 ))}
             </ul>
@@ -251,23 +214,34 @@ export default function Dashboard() {
 
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-900">Open conflicts</h3>
+            <p className="text-xs text-slate-400">Deterministic checks, recomputed on load</p>
             <ul className="mt-3 space-y-3">
-              {data.conflicts.length === 0 ? (
+              {conflicts.length === 0 ? (
                 <li className="text-sm text-slate-400">No conflicts — schedule is clean.</li>
               ) : (
-                data.conflicts.map((conflict) => (
+                conflicts.slice(0, 5).map((conflict) => (
                   <li
                     key={conflict.id}
-                    className="rounded-lg border border-rose-100 bg-rose-50/70 p-3"
+                    className="rounded-lg border border-neutral-200 bg-neutral-50 p-3"
                   >
-                    <p className="text-xs font-semibold text-rose-700">{conflict.title}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-rose-600/90">
+                    <p className="text-xs font-semibold text-neutral-800">
+                      <span className="mr-1.5 rounded bg-neutral-200 px-1 py-0.5 text-[10px]">
+                        {conflict.code}
+                      </span>
+                      {conflict.title}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-neutral-600">
                       {conflict.detail}
                     </p>
                   </li>
                 ))
               )}
             </ul>
+            {conflicts.length > 5 && (
+              <p className="mt-2 text-[11px] text-slate-400">
+                +{conflicts.length - 5} more — open the timetable or bookings board for the rest.
+              </p>
+            )}
           </section>
         </div>
       </div>
@@ -287,6 +261,15 @@ export default function Dashboard() {
           ))}
         </ul>
       </section>
+
+      <DecisionDialog
+        open={target !== null}
+        title={target ? `${target.id} — ${target.title}` : ''}
+        detail={target?.detail}
+        conflicts={target?.conflicts ?? []}
+        onClose={() => setTarget(null)}
+        onSubmit={submitDecision}
+      />
     </div>
   )
 }
