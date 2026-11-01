@@ -31,7 +31,7 @@ def solve_weekly(
     data: Data,
     *,
     max_seconds: float = 120.0,
-    workers: int = 8,
+    workers: int = 2,
     extra_faculty_unavailable: set[tuple[str, str, int]] | None = None,
     extra_room_unavailable: set[tuple[str, str, int]] | None = None,
     baseline: dict[str, tuple[str, int, str]] | None = None,
