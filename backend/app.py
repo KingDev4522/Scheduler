@@ -94,16 +94,51 @@ ALLOW_DEMO_HEADER = os.getenv("ALLOW_DEMO_HEADER", "0") == "1"
 PUBLIC_API_PATHS = {"/api/health", "/api/auth/login"}
 
 app = FastAPI(title="CIT Scheduler API", version="1.0.0")
+
+# ── CORS ────────────────────────────────────────────────────────────────
+# The SPA and the API are deployed on different origins (Vercel frontend,
+# Render backend). A browser blocks the request at the preflight unless the
+# calling origin is allowed here, before any of our own code runs.
 LOCAL_ORIGINS = (
-    "http://localhost:5173,http://127.0.0.1:5173,"
-    "http://localhost:5174,http://127.0.0.1:5174"
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
 )
+# The live frontend. Kept in code as well as in CORS_ORIGINS so a stale env var
+# on the host can never lock the deployed site out of its own API.
+DEPLOYED_ORIGINS = (
+    "https://cit-scheduler-4-idiots.vercel.app",
+)
+
+
+def _cors_origins() -> list[str]:
+    extra = [
+        origin.strip().rstrip("/")
+        for origin in (os.getenv("CORS_ORIGINS") or "").split(",")
+        if origin.strip() and origin.strip() != "*"
+    ]
+    ordered: list[str] = []
+    for origin in (*DEPLOYED_ORIGINS, *LOCAL_ORIGINS, *extra):
+        if origin and origin not in ordered:
+            ordered.append(origin)
+    return ordered
+
+
+# Vercel gives every preview build its own hostname, so previews match by
+# pattern while the explicit list above pins the production origin.
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX") or r"https://[a-z0-9-]+\.vercel\.app"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", LOCAL_ORIGINS).split(","),
+    allow_origins=_cors_origins(),
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=600,
 )
 
 STATE: dict[str, Any] = {
