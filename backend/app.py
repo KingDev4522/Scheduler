@@ -884,7 +884,8 @@ def health() -> dict:
 
 @app.get("/api/dataset")
 def dataset(x_demo_user: str = Header(default="debjeet")) -> dict:
-    _actor(x_demo_user)
+    user = "debjeet" if not isinstance(x_demo_user, str) else x_demo_user
+    _actor(user)
     raw = STATE["raw"]
     if raw is None:
         raise HTTPException(status_code=409, detail="no dataset loaded")
@@ -932,7 +933,7 @@ async def import_dataset(
     except json.JSONDecodeError as error:
         raise HTTPException(status_code=422, detail=f"invalid JSON: {error}") from error
     _load_raw(raw, file.filename or "uploaded.json")
-    return dataset()
+    return dataset(x_demo_user)
 
 
 def _run_generation(seconds: float) -> None:
