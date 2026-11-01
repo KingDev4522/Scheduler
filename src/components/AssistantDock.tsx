@@ -281,11 +281,8 @@ export function AssistantDock() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: reduceMotion ? 0 : 0.35, ease: 'easeOut' }}
-          className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-transparent"
+          className="cit-assistant-overlay fixed inset-0 z-50 flex flex-col overflow-hidden bg-slate-950/80 dark:bg-black/85"
         >
-          <div className="assistant-veil" aria-hidden />
-          <div className="assistant-halo" aria-hidden />
-
           <div className="relative z-10 flex justify-end p-4 md:p-6">
             <h2 className="sr-only">Assistant</h2>
             <div className="flex items-center gap-2">
@@ -298,7 +295,7 @@ export function AssistantDock() {
                   })
                 }}
                 aria-label={voiceReplies ? 'Disable spoken replies' : 'Enable spoken replies'}
-                className="rounded-full bg-white/90 p-2 text-neutral-600 shadow-sm hover:text-neutral-900"
+                className="rounded-full border border-white/20 bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
               >
                 {voiceReplies ? (
                   <Volume2 className="h-4 w-4" aria-hidden />
@@ -310,7 +307,7 @@ export function AssistantDock() {
                 type="button"
                 onClick={closeOverlay}
                 aria-label="Close assistant"
-                className="rounded-full bg-white/90 p-2 text-neutral-600 shadow-sm hover:text-neutral-900"
+                className="rounded-full border border-white/20 bg-white/10 p-2 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
@@ -333,7 +330,7 @@ export function AssistantDock() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: reduceMotion ? 0 : 0.35, delay: reduceMotion ? 0 : 0.08, ease: 'easeOut' }}
-            className="relative z-10 mx-auto mb-4 w-[min(94vw,34rem)] rounded-2xl border border-neutral-200 bg-white/95 p-4 shadow-2xl backdrop-blur">
+            className="relative z-10 mx-auto mb-4 w-[min(94vw,34rem)] rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xl">
             <div className="flex items-center justify-between gap-2">
               <div className="inline-flex rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
                 {!isMobile && (
@@ -344,8 +341,8 @@ export function AssistantDock() {
                       startListening()
                     }}
                     aria-pressed={mode === 'voice'}
-                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold ${
-                      mode === 'voice' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                      mode === 'voice' ? 'bg-white text-neutral-900' : 'text-neutral-500 hover:text-neutral-800'
                     }`}
                   >
                     <Mic className="h-3.5 w-3.5" aria-hidden /> Voice
@@ -358,14 +355,14 @@ export function AssistantDock() {
                     setMode('type')
                   }}
                   aria-pressed={mode === 'type'}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-                    mode === 'type' ? 'bg-white text-neutral-900 shadow-sm' : 'text-neutral-500'
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    mode === 'type' ? 'bg-white text-neutral-900' : 'text-neutral-500 hover:text-neutral-800'
                   }`}
                 >
                   Type
                 </button>
               </div>
-              <span className="text-[10px] text-neutral-500">
+              <span className="text-[12px] text-neutral-500">
                 {isMobile
                   ? 'Voice is off on mobile.'
                   : mode === 'voice'
@@ -413,7 +410,7 @@ export function AssistantDock() {
             )}
 
             {user.role === 'faculty' && (
-              <p className="mt-1 text-[10px] text-neutral-500">
+              <p className="mt-1 text-[12px] text-neutral-500">
                 Faculty requests are schedule changes; venue booking is disabled for this role.
               </p>
             )}
@@ -448,10 +445,10 @@ export function AssistantDock() {
                   ))}
                 </ul>
                 {parsed.source !== 'gemini' && (
-                  <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                  <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[12px] text-amber-800">
                     <p>Gemini is temporarily unavailable — parsed locally. Review every field.</p>
                     {parsed.fallback_reason && (
-                      <p className="mt-0.5 break-words text-[9px] opacity-80">
+                      <p className="mt-0.5 break-words text-[11px] opacity-80">
                         {parsed.fallback_reason.slice(0, 220)}
                       </p>
                     )}
@@ -506,7 +503,7 @@ export function AssistantDock() {
                       ? 'Re-interpret'
                       : 'Interpret'}
               </button>
-              <span className="text-[10px] text-neutral-400">
+              <span className="text-[12px] text-neutral-400">
                 Nothing is submitted until you review and confirm on the Assistant page.
               </span>
             </div>
@@ -521,11 +518,7 @@ export function AssistantDock() {
           transition={{ duration: reduceMotion ? 0 : 0.22, ease: 'easeOut' }}
           className="pointer-events-none fixed inset-x-0 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-50 flex justify-center"
         >
-          <div className="relative rounded-full bg-[#0f172a] p-0.5 shadow-[0_0_0_1px_rgba(148,163,184,0.45),0_0_20px_rgba(56,189,248,0.55),0_0_45px_rgba(139,92,246,0.28),0_10px_28px_rgba(15,23,42,0.35)]">
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -inset-2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.28),transparent_68%)] blur-md"
-            />
+          <div className="relative rounded-full">
             <button
               type="button"
               onClick={openOverlay}
@@ -533,7 +526,7 @@ export function AssistantDock() {
               title="Ask the assistant"
               className="pointer-events-auto relative z-10 flex h-11 w-11 items-center justify-center rounded-full bg-[#0f172a] text-white ring-1 ring-white/15 transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
             >
-              <Sparkles className="h-5 w-5 drop-shadow-[0_1px_4px_rgba(255,255,255,0.35)]" aria-hidden />
+              <Sparkles className="h-5 w-5" aria-hidden />
             </button>
           </div>
         </motion.div>

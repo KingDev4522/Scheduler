@@ -181,96 +181,11 @@ html {
   touch-action: none;
 }
 
-/* ══ Assistant overlay ground ═════════════════════════════
-   A light core keeps the black dots legible; black blooms
-   spread unevenly from the edges with a long, soft blur. */
-.assistant-veil {
-  position: absolute;
-  inset: -15%;
-  pointer-events: none;
-  background: radial-gradient(
-    ellipse 52% 46% at 50% 50%,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(255, 255, 255, 0.82) 38%,
-    rgba(255, 255, 255, 0.28) 56%,
-    rgba(0, 0, 0, 0.18) 72%,
-    rgba(0, 0, 0, 0.62) 90%,
-    rgba(0, 0, 0, 0.78) 100%
-  );
-  filter: blur(55px);
-  animation: assistant-bloom 19s ease-in-out infinite alternate;
-  will-change: transform, opacity;
-}
-
-.assistant-veil::before,
-.assistant-veil::after {
-  content: "";
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(
-    closest-side,
-    rgba(0, 0, 0, 0.72),
-    rgba(0, 0, 0, 0.22) 55%,
-    transparent 78%
-  );
-  filter: blur(90px);
-  animation: assistant-drift 17s ease-in-out infinite alternate;
-}
-
-.assistant-veil::before {
-  width: 58vmax;
-  height: 42vmax;
-  top: -8%;
-  left: -6%;
-  opacity: 0.65;
-}
-
-.assistant-veil::after {
-  width: 64vmax;
-  height: 48vmax;
-  right: -12%;
-  bottom: -10%;
-  opacity: 0.55;
-  animation-duration: 23s;
-  animation-direction: alternate-reverse;
-}
-
-.assistant-halo {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: min(72vmin, 620px);
-  height: min(56vmin, 480px);
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(
-    closest-side,
-    rgba(255, 255, 255, 0.95),
-    rgba(255, 255, 255, 0.55) 55%,
-    transparent 78%
-  );
-  filter: blur(38px);
-  pointer-events: none;
-}
-
-@keyframes assistant-bloom {
-  0% { transform: scale(0.95) translate(-2%, -1%) rotate(0deg); opacity: 0.9; }
-  50% { transform: scale(1.05) translate(2%, -2%) rotate(3deg); opacity: 1; }
-  100% { transform: scale(1) translate(-3%, 2%) rotate(-2deg); opacity: 0.94; }
-}
-
-@keyframes assistant-drift {
-  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
-  50% { transform: translate3d(4%, 3%, 0) scale(1.12) rotate(8deg); }
-  100% { transform: translate3d(-3%, -2%, 0) scale(0.96) rotate(-5deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .assistant-veil,
-  .assistant-veil::before,
-  .assistant-veil::after {
-    animation: none;
-  }
+/* ══ Assistant overlay ═════════════════════════════════════
+   A solid, high-contrast scrim — no blurred veil. The dots are
+   drawn in the overlay’s own ink so they read against it. */
+.cit-assistant-overlay .ptc {
+  --fill-on: rgb(226 232 240);
 }
 
 /* ══ Motion system ═════════════════════════════════════════
