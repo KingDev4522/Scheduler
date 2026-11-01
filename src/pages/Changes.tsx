@@ -1,13 +1,17 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, Upload, Wrench } from 'lucide-react'
-import { PageHeader } from '../components/PageHeader'
-import { EmptyState, StatusNotice } from '../components/States'
-import { PageSkeleton } from '../components/Skeletons'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
+import { toBookingStatus } from '../lib/bookingBoard'
+import { cn } from '../lib/utils'
+import { EmptyState, StatusNotice } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
+import { StatusPill } from '../components/BookingStatus'
+import { Field, FormSection, ToggleChip, fieldInput } from '../components/FormBits'
 
 type ChangeType = 'faculty_leave' | 'room_closure'
+
+const TEACHING_PERIODS = Array.from({ length: 9 }, (_, index) => index + 1)
 
 export default function Changes() {
   const { user } = useAuth()
@@ -30,6 +34,7 @@ export default function Changes() {
 
   const diff = official.schedule?.diff ?? official.disruptionResult?.diff ?? null
   const proposalStatus = official.schedule?.proposal_status ?? null
+  const hardViolations = official.schedule?.after_summary?.hard_violation_count ?? null
 
   const changePayload = useMemo(() => {
     if (type === 'faculty_leave') {
@@ -59,17 +64,21 @@ export default function Changes() {
   if (!dataset) {
     return (
       <div>
-        <PageHeader title="Change proposals" subtitle="Official disruption repair" />
-        <EmptyState
-          icon={GitCompareArrows}
-          title="Official dataset not loaded"
-          description="Start the backend and load cit_public.json from Import / Exports."
-          action={
-            <Link to="/admin" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
-              Open Import / Exports
-            </Link>
-          }
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Change proposals</h2>
+        <div className="mt-4">
+          <EmptyState
+            title="Official dataset not loaded"
+            description="Start the backend and load cit_public.json from Import / Exports."
+            action={
+              <Link
+                to="/admin"
+                className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                Open Import / Exports
+              </Link>
+            }
+          />
+        </div>
       </div>
     )
   }
@@ -77,24 +86,31 @@ export default function Changes() {
   if (!official.schedule) {
     return (
       <div>
-        <PageHeader title="Change proposals" subtitle="Official disruption repair" />
-        <EmptyState
-          icon={GitCompareArrows}
-          title="Generate the timetable first"
-          description="A change proposal is repaired against the generated official schedule."
-          action={
-            <Link to="/admin" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
-              Generate schedule
-            </Link>
-          }
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Change proposals</h2>
+        <div className="mt-4">
+          <EmptyState
+            title="Generate the timetable first"
+            description="A change proposal is repaired against the generated official schedule."
+            action={
+              <Link
+                to="/admin"
+                className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                Generate schedule
+              </Link>
+            }
+          />
+        </div>
       </div>
     )
   }
 
   const submitBuilder = async () => {
     if (user.role !== 'admin') {
-      setFlash({ tone: 'error', message: 'Only Admin can upload a disruption; use My Workspace to request a change.' })
+      setFlash({
+        tone: 'error',
+        message: 'Only Admin can upload a disruption; use My Workspace to request a change.',
+      })
       return
     }
     if (!periods.length) {
@@ -127,268 +143,290 @@ export default function Changes() {
     )
   }
 
+  const applyTarget =
+    type === 'faculty_leave'
+      ? faculty.find((member) => member.id === activeFaculty)
+      : rooms.find((room) => room.id === activeRoom)
+
   return (
     <div className="cit-page">
-      <PageHeader
-        title="Change proposals"
-        subtitle="Faculty leave, room closure or a change file. The official solver repairs the timetable, shows the exact diff and waits for Admin approval."
-      />
-
-      {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
-      {official.error && !flash && <StatusNotice tone="error">{official.error}</StatusNotice>}
-
-      {user.role === 'admin' ? (
-        <section className="cit-card rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <Wrench className="h-4 w-4 text-neutral-700" aria-hidden /> Build a change
-          </h3>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <label htmlFor="change-type" className="mb-1 block text-xs font-medium text-slate-600">
-                Change type
-              </label>
-              <select
-                id="change-type"
-                value={type}
-                onChange={(event) => setType(event.target.value as ChangeType)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-              >
-                <option value="faculty_leave">Faculty leave</option>
-                <option value="room_closure">Room closure</option>
-              </select>
-            </div>
-
-            {type === 'faculty_leave' ? (
-              <div>
-                <label htmlFor="change-faculty" className="mb-1 block text-xs font-medium text-slate-600">
-                  Faculty
-                </label>
-                <select
-                  id="change-faculty"
-                  value={activeFaculty}
-                  onChange={(event) => setFacultyId(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-                >
-                  {faculty.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name} · {member.department}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label htmlFor="change-room" className="mb-1 block text-xs font-medium text-slate-600">
-                  Room
-                </label>
-                <select
-                  id="change-room"
-                  value={activeRoom}
-                  onChange={(event) => setRoomId(event.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-                >
-                  {rooms.map((room) => (
-                    <option key={room.id} value={room.id}>
-                      {room.name} · {room.building}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label htmlFor="change-day" className="mb-1 block text-xs font-medium text-slate-600">
-                Day
-              </label>
-              <select
-                id="change-day"
-                value={day}
-                onChange={(event) => setDay(event.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-              >
-                {days.map((weekday) => (
-                  <option key={weekday} value={weekday}>
-                    {weekday}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="change-reason" className="mb-1 block text-xs font-medium text-slate-600">
-                Reason
-              </label>
-              <input
-                id="change-reason"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="Conference, maintenance..."
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400"
-              />
-            </div>
-          </div>
-
-          <fieldset className="mt-4">
-            <legend className="mb-2 text-xs font-medium text-slate-600">Affected periods</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {Array.from({ length: 9 }, (_, index) => index + 1).map((period) => (
-                <button
-                  key={period}
-                  type="button"
-                  onClick={() =>
-                    setPeriods((current) =>
-                      current.includes(period)
-                        ? current.filter((value) => value !== period)
-                        : [...current, period].sort((a, b) => a - b),
-                    )
-                  }
-                  aria-pressed={periods.includes(period)}
-                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${
-                    periods.includes(period)
-                      ? 'border-neutral-900 bg-neutral-900 text-white'
-                      : 'border-slate-300 bg-white text-slate-700'
-                  }`}
-                >
-                  P{period}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => void submitBuilder()}
-              disabled={official.busy}
-              className="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {official.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitCompareArrows className="h-4 w-4" />}
-              {official.busy ? 'Repairing…' : 'Build official repair'}
-            </button>
-            <button
-              type="button"
-              onClick={() => fileInput.current?.click()}
-              disabled={official.busy}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50"
-            >
-              <Upload className="h-4 w-4" /> Upload change file
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="application/json,.json"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                void uploadFile(file)
-                event.target.value = ''
-              }}
-            />
-            <span className="text-[11px] text-slate-500">
-              Supports faculty leave, room closure, add/remove session via the official change-file format.
-            </span>
-          </div>
-        </section>
-      ) : (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-          <p>
-            Change proposals for coordinators are submitted from <strong>My Workspace</strong>. Admin
-            approves them here after the official solver validates the move.
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">
+            Change proposals
+          </h2>
+          <p className="mt-1 max-w-[56ch] text-[14px] leading-relaxed text-slate-600">
+            {diff
+              ? `${diff.moved_count} session${diff.moved_count === 1 ? '' : 's'} moved · ${hardViolations ?? '–'} hard violation${hardViolations === 1 ? '' : 's'} after the repair`
+              : 'The solver repairs the timetable, shows the exact diff, and waits for Admin approval.'}
           </p>
-          <Link to="/workspace" className="mt-3 inline-block text-xs font-semibold text-neutral-900 hover:underline">
-            Open My Workspace →
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to="/official"
+            className="hidden h-8 items-center rounded-lg px-2.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
+          >
+            Official report
           </Link>
-        </section>
-      )}
+          <Link
+            to="/approvals"
+            className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+          >
+            Open approvals
+          </Link>
+        </div>
+      </header>
 
-      {diff && (
-        <section className="cit-card mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <GitCompareArrows className="h-4 w-4 text-neutral-700" aria-hidden /> Official repair preview
-            </h3>
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                (official.schedule?.after_summary?.hard_violation_count ?? 0) === 0
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-rose-100 text-rose-800'
-              }`}
-            >
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-              {proposalStatus ?? 'pending'} · {diff.moved_count} moved
-            </span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            <div>
-              <p className="text-slate-500">Moved</p>
-              <p className="font-semibold text-slate-900">{diff.moved_count}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Time changed</p>
-              <p className="font-semibold text-slate-900">{diff.time_changed}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Room only</p>
-              <p className="font-semibold text-slate-900">{diff.room_only_changed}</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Hard violations</p>
-              <p className="font-semibold text-slate-900">
-                {official.schedule?.after_summary?.hard_violation_count ?? '—'}
+      {flash ? (
+        <div className="mt-4">
+          <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>
+        </div>
+      ) : null}
+      {official.error && !flash ? (
+        <div className="mt-4">
+          <StatusNotice tone="error">{official.error}</StatusNotice>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <div className="min-w-0">
+          {user.role === 'admin' ? (
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-5 py-3">
+                <h3 className="text-[15px] font-semibold text-slate-900">Build a change</h3>
+                <p className="text-[12px] text-slate-500">Timetable is untouched until approved.</p>
+              </div>
+
+              <div className="px-5 py-4">
+                <FormSection title="Who or what is unavailable">
+                  <div className="flex flex-wrap gap-1.5">
+                    <ToggleChip active={type === 'faculty_leave'} onClick={() => setType('faculty_leave')}>
+                      Faculty leave
+                    </ToggleChip>
+                    <ToggleChip active={type === 'room_closure'} onClick={() => setType('room_closure')}>
+                      Room closure
+                    </ToggleChip>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {type === 'faculty_leave' ? (
+                      <Field label="Faculty" htmlFor="change-faculty">
+                        <select
+                          id="change-faculty"
+                          value={activeFaculty}
+                          onChange={(event) => setFacultyId(event.target.value)}
+                          className={fieldInput}
+                        >
+                          {faculty.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name} · {member.department}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    ) : (
+                      <Field label="Room" htmlFor="change-room">
+                        <select
+                          id="change-room"
+                          value={activeRoom}
+                          onChange={(event) => setRoomId(event.target.value)}
+                          className={fieldInput}
+                        >
+                          {rooms.map((room) => (
+                            <option key={room.id} value={room.id}>
+                              {room.name} · {room.building}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    )}
+                    <Field label="Day" htmlFor="change-day">
+                      <select
+                        id="change-day"
+                        value={day}
+                        onChange={(event) => setDay(event.target.value)}
+                        className={fieldInput}
+                      >
+                        {days.map((weekday) => (
+                          <option key={weekday} value={weekday}>
+                            {weekday}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+
+                  <Field label="Reason" htmlFor="change-reason">
+                    <input
+                      id="change-reason"
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                      placeholder="Conference, maintenance"
+                      className={fieldInput}
+                    />
+                  </Field>
+                </FormSection>
+
+                <div className="mt-5">
+                  <FormSection title="Affected periods" hint={`${periods.length} selected`}>
+                    <div className="flex flex-wrap gap-1.5">
+                      {TEACHING_PERIODS.map((period) => (
+                        <ToggleChip
+                          key={period}
+                          active={periods.includes(period)}
+                          onClick={() =>
+                            setPeriods((current) =>
+                              current.includes(period)
+                                ? current.filter((value) => value !== period)
+                                : [...current, period].sort((a, b) => a - b),
+                            )
+                          }
+                        >
+                          P{period}
+                        </ToggleChip>
+                      ))}
+                    </div>
+                    <p className="text-[12px] text-slate-500">
+                      {applyTarget
+                        ? `${'name' in applyTarget ? applyTarget.name : applyTarget.id} on ${day}, ${
+                            periods.length ? `P${[...periods].sort((a, b) => a - b).join(', P')}` : 'no periods'
+                          }.`
+                        : 'Pick a target and periods.'}
+                    </p>
+                  </FormSection>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void submitBuilder()}
+                    disabled={official.busy}
+                    className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50"
+                  >
+                    {official.busy ? 'Repairing…' : 'Build official repair'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current?.click()}
+                    disabled={official.busy}
+                    className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:opacity-50"
+                  >
+                    Upload change file
+                  </button>
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept="application/json,.json"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      void uploadFile(file)
+                      event.target.value = ''
+                    }}
+                  />
+                </div>
+                <p className="mt-2 text-[12px] text-slate-500">
+                  The change file takes faculty leave, room closure, or an added or removed session in
+                  the official format.
+                </p>
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+              <h3 className="text-[15px] font-semibold text-slate-900">Change proposals</h3>
+              <p className="mt-1 text-[13px] leading-relaxed text-slate-600">
+                Coordinators and faculty request changes from My Workspace. An Admin reviews the
+                solver's repair here and approves it.
               </p>
-            </div>
-          </div>
-          {diff.moved.length > 0 && (
-            <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-3 py-2">Session</th>
-                    <th className="px-3 py-2">Before</th>
-                    <th className="px-3 py-2">After</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
+              <Link
+                to="/workspace"
+                className="mt-3 inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                Open My Workspace
+              </Link>
+            </section>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          {diff ? (
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-slate-100 px-4 py-3">
+                <h3 className="text-[15px] font-semibold text-slate-900">Repair preview</h3>
+                <StatusPill
+                  status={proposalStatus === 'approved' ? 'approved' : proposalStatus === 'rejected' ? 'rejected' : 'pending'}
+                />
+              </div>
+
+              <dl className="grid grid-cols-2 gap-px border-b border-slate-100 bg-slate-100 sm:grid-cols-4">
+                {[
+                  { label: 'Moved', value: diff.moved_count },
+                  { label: 'Time changed', value: diff.time_changed },
+                  { label: 'Room only', value: diff.room_only_changed },
+                  { label: 'Hard after', value: hardViolations ?? '–' },
+                ].map((stat) => (
+                  <div key={stat.label} className="bg-white px-3 py-2.5">
+                    <dt className="text-[12px] text-slate-500">{stat.label}</dt>
+                    <dd className="mt-0.5 text-[18px] font-semibold tabular-nums text-slate-900">
+                      {stat.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+
+              {diff.moved.length > 0 ? (
+                <ul className="cit-stagger max-h-80 divide-y divide-slate-100 overflow-y-auto">
                   {diff.moved.map((row) => (
-                    <tr key={row.session_id}>
-                      <td className="px-3 py-2 font-medium text-slate-800">{row.session_id}</td>
-                      <td className="px-3 py-2 text-xs text-slate-600">
+                    <li key={row.session_id} className="px-4 py-2">
+                      <p className="text-[13px] font-medium text-slate-800">{row.session_id}</p>
+                      <p className="mt-0.5 text-[12px] tabular-nums text-slate-500">
                         {row.before.room_id} · {row.before.day} P{row.before.start_period}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-600">
-                        {row.after.room_id} · {row.after.day} P{row.after.start_period}
-                      </td>
-                    </tr>
+                        <span className="px-1">to</span>
+                        <span className="text-slate-800">
+                          {row.after.room_id} · {row.after.day} P{row.after.start_period}
+                        </span>
+                      </p>
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {(diff.added_sessions.length > 0 || diff.removed_sessions.length > 0) && (
-            <p className="mt-3 text-xs text-slate-600">
-              {diff.added_sessions.length > 0 && (
-                <>Added: <span className="font-semibold">{diff.added_sessions.join(', ')}</span>. </>
+                </ul>
+              ) : (
+                <p className="px-4 py-3 text-[13px] text-slate-500">
+                  No session needs to move for this change.
+                </p>
               )}
-              {diff.removed_sessions.length > 0 && (
-                <>Removed: <span className="font-semibold">{diff.removed_sessions.join(', ')}</span>.</>
-              )}
-            </p>
+
+              {diff.added_sessions.length > 0 || diff.removed_sessions.length > 0 ? (
+                <p className="border-t border-slate-100 px-4 py-2 text-[12px] text-slate-600">
+                  {diff.added_sessions.length > 0 ? (
+                    <>
+                      Added {diff.added_sessions.join(', ')}.{' '}
+                    </>
+                  ) : null}
+                  {diff.removed_sessions.length > 0 ? (
+                    <>Removed {diff.removed_sessions.join(', ')}.</>
+                  ) : null}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-4 py-3">
+                <Link
+                  to="/approvals"
+                  className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[12px] font-medium text-white transition-colors hover:bg-neutral-800"
+                >
+                  Review in Approvals
+                </Link>
+                <span className="text-[12px] text-slate-500">Nothing ships until Admin approves.</span>
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-xl border border-dashed border-slate-300 px-4 py-6">
+              <p className="text-[13px] text-slate-500">
+                No repair proposal yet. Build a change and the solver's diff appears here.
+              </p>
+            </section>
           )}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <Link
-              to="/approvals"
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Review in Approvals →
-            </Link>
-            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-              Nothing is published until Admin approves.
-            </span>
-          </div>
-        </section>
-      )}
+        </div>
+      </div>
     </div>
   )
 }

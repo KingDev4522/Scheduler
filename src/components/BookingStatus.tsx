@@ -21,22 +21,6 @@ const PILL: Record<BookingStatus, string> = {
   cancelled: 'border-slate-200 bg-slate-50 text-slate-500',
 }
 
-export const STATUS_DOT: Record<BookingStatus, string> = {
-  pending: 'bg-slate-400',
-  approved: 'bg-emerald-600',
-  alternative_offered: 'bg-amber-600',
-  rejected: 'bg-rose-600',
-  cancelled: 'bg-slate-300',
-}
-
-export const STATUS_BAR: Record<BookingStatus, string> = {
-  pending: 'bg-slate-300',
-  approved: 'bg-emerald-500',
-  alternative_offered: 'bg-amber-500',
-  rejected: 'bg-rose-500',
-  cancelled: 'bg-slate-200',
-}
-
 export function StatusPill({
   status,
   className,
