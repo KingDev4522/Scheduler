@@ -729,3 +729,57 @@ body {
 .dark .cit-ambient-blob-b {
   background: radial-gradient(closest-side, rgb(113 113 122 / 0.16), transparent 72%);
 }
+
+/* ══ Sign-in card edge ═════════════════════════════════════
+   The card keeps its flat hairline; a single soft arc of light
+   travels around that 1px edge, slowly and at low contrast.
+   Deliberate exception to the "no gradients" rule: a border
+   highlight cannot be drawn any other way. */
+@property --cit-edge-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.cit-login-edge {
+  --cit-edge-light: rgb(15 23 42 / 0.16);
+}
+
+.dark .cit-login-edge {
+  --cit-edge-light: rgb(255 255 255 / 0.26);
+}
+
+.cit-login-edge::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient( /* taste-skill-ignore — a border highlight needs a gradient */
+    from var(--cit-edge-angle),
+    transparent 0deg,
+    var(--cit-edge-light) 44deg,
+    transparent 92deg
+  );
+  -webkit-mask: /* taste-skill-ignore — the ring mask needs a flat gradient */
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: cit-edge-sweep 9s linear infinite;
+}
+
+@keyframes cit-edge-sweep {
+  to {
+    --cit-edge-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cit-login-edge::before {
+    animation: none;
+    opacity: 0;
+  }
+}

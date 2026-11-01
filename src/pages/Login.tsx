@@ -96,7 +96,7 @@ export default function Login() {
 
           <form
             onSubmit={handleSubmit}
-            className="rounded-2xl border border-slate-200 bg-white p-6"
+            className="cit-login-edge relative rounded-2xl border border-slate-200 bg-white p-6"
           >
             <h2 className="text-[15px] font-semibold text-slate-900">Sign in</h2>
             <p className="mt-0.5 text-[12px] text-slate-500">
