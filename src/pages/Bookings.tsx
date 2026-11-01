@@ -13,6 +13,7 @@ import { PageSkeleton } from '../components/Skeletons'
 import { BookingStatusCards, statusCardsFromCounts, type StatusFilter } from '../components/BookingStatusCards'
 import { FestWeekBoard } from '../components/FestWeekBoard'
 import { RequestLedger } from '../components/RequestLedger'
+import { BookingDetailDialog } from '../components/BookingDetailDialog'
 import { StatusPill } from '../components/BookingStatus'
 import { cn } from '../lib/utils'
 
@@ -144,23 +145,9 @@ export default function Bookings() {
   const manualNav = findNav('/manual')
   const manualLabel = user && manualNav ? navLabel(manualNav, user.role) : 'Request a venue'
 
-  const selectRow = useCallback((id: string) => {
-    setSelectedId((prev) => (prev === id ? null : id))
-  }, [])
-
-  // Bring the chosen request into view: the week board and the ledger share one selection.
-  useEffect(() => {
-    if (!selectedId) return
-    const desktop =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(min-width: 1024px)').matches
-    const target =
-      document.getElementById(`${desktop ? 'ledger' : 'ledger-m'}-${selectedId}`) ??
-      document.getElementById(`ledger-${selectedId}`)
-    if (!target) return
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
-  }, [selectedId])
+  // Any request — from the week board or the ledger — opens the same popup.
+  const openRow = useCallback((id: string) => setSelectedId(id), [])
+  const closeRow = useCallback(() => setSelectedId(null), [])
 
   const filtered = useMemo(() => {
     if (!board) return []
@@ -430,7 +417,7 @@ export default function Bookings() {
             rows={weekRows}
             semester={official.dataset?.semester ?? null}
             selectedId={selectedId}
-            onSelect={selectRow}
+            onSelect={openRow}
           />
         ) : (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-6">
@@ -445,8 +432,8 @@ export default function Bookings() {
       <div className="mt-4">
         <RequestLedger
           rows={visible}
-          selectedId={selectedId}
-          onSelect={selectRow}
+          openId={selectedId}
+          onOpen={openRow}
           onClearFilters={clearFilters}
         />
       </div>
@@ -482,6 +469,11 @@ export default function Bookings() {
           ))}
         </div>
       </footer>
+
+      <BookingDetailDialog
+        row={selectedId ? (board.rows.find((row) => row.id === selectedId) ?? null) : null}
+        onClose={closeRow}
+      />
     </div>
   )
 }

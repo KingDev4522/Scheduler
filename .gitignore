@@ -1,47 +1,52 @@
-# OS
+# ── OS ─────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# Editors / IDEs
+# ── Editors / IDEs ─────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Logs
+# ── Logs ───────────────────────────────────────────
 *.log
 npm-debug.log*
 
-# Dependencies
+# ── Dependencies ───────────────────────────────────
 node_modules/
 venv/
+.venv/
 __pycache__/
 *.pyc
 
-# Build output
+# ── Build output ───────────────────────────────────
 dist/
 build/
 out/
 target/
+*.tsbuildinfo
+.vite/
+coverage/
 
-# Environment / secrets
+# ── Environment / secrets ──────────────────────────
 .env
 .env.local
+.env.*
+!.env.example
 *.pem
 
-# Backend runtime state
+# ── Backend runtime state ──────────────────────────
 backend/*.sqlite3
 backend/*.sqlite3-*
 backend/tests/*.sqlite3
 exports/api/
 
-# Local development tooling
+# ── Local development tooling ──────────────────────
 .freebuff/
 .pytest_cache/
 
-# Agent skills & design tooling (local only, never commit)
+# ── Agent / AI tooling (local only, never commit) ──
 .agents/
+.commandcode/
 .taste-skill/
-
-.commandcode

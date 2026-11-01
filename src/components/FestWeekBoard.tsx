@@ -6,7 +6,6 @@ import { formatShortDate, weekDates } from '../lib/semester'
 import { DAYS, type Day } from '../lib/time'
 import { SOFT_EASE } from '../lib/motion'
 import { cn } from '../lib/utils'
-import { STATUS_BAR } from './BookingStatus'
 
 const DAY_FULL: Record<Day, string> = {
   Mon: 'Monday',
@@ -91,17 +90,15 @@ export function FestWeekBoard({
                             ease: SOFT_EASE,
                           }}
                           className={cn(
-                            'flex w-full gap-2 rounded-lg border px-2 py-1.5 text-left transition-colors duration-200',
+                            'flex w-full rounded-lg border px-2 py-1.5 text-left transition-colors duration-200',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 dark:focus-visible:ring-slate-300 dark:focus-visible:ring-offset-slate-950',
                             active
                               ? 'border-slate-300 bg-slate-50'
-                              : 'border-transparent hover:border-slate-200 hover:bg-slate-50',
+                              : row.moved
+                                ? 'border-transparent bg-amber-50/70 hover:bg-amber-50'
+                                : 'border-transparent hover:border-slate-200 hover:bg-slate-50',
                           )}
                         >
-                          <span
-                            aria-hidden
-                            className={cn('mt-0.5 h-4 w-[3px] shrink-0 rounded-full', STATUS_BAR[row.status])}
-                          />
                           <span className="min-w-0 flex-1">
                             <span className="flex items-baseline gap-1.5">
                               <span className="shrink-0 text-[12px] font-semibold tabular-nums text-slate-900">

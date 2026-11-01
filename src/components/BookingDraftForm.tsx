@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import type { BookingDraft, BookingWindow } from '../lib/api'
+import type { BookingDraft, BookingWindow, OccupancyCheck } from '../lib/api'
 import { PERIOD_TIMES } from '../lib/time'
-import { SOFT_EASE } from '../lib/motion'
 import type { Semester } from '../lib/semester'
-import type { OccupancyCheck } from '../lib/api'
 import {
   dateToWeek,
   datasetDay,
@@ -14,8 +11,11 @@ import {
   startTimeOptions,
   timeFromPeriod,
 } from '../lib/semester'
+import { cn } from '../lib/utils'
 import { DatePickerCalendar } from './DatePickerCalendar'
 import { AvailabilityPanel } from './AvailabilityPanel'
+import { PeriodTape } from './PeriodTape'
+import { Field, FormSection, ToggleChip, fieldInput, fieldTextarea } from './FormBits'
 
 export interface BookingFormOptions {
   days: string[]
@@ -87,17 +87,15 @@ export function BookingDraftForm({
   }, [draft.windows])
 
   const resolved = resolveWindow(startTime, endTime)
-  const fromPeriod = resolved.error ? firstWindow?.from_period ?? 10 : resolved.from_period
-  const toPeriod = resolved.error ? firstWindow?.to_period ?? 11 : resolved.to_period
+  const fromPeriod = resolved.error ? (firstWindow?.from_period ?? 10) : resolved.from_period
+  const toPeriod = resolved.error ? (firstWindow?.to_period ?? 11) : resolved.to_period
   const selectedRoom = options.rooms.find((room) => room.id === draft.requested_room)
   const overCapacity =
-    selectedRoom !== undefined &&
-    draft.attendance !== null &&
-    draft.attendance > selectedRoom.capacity
-  const spare =
-    selectedRoom !== undefined && draft.attendance !== null
-      ? selectedRoom.capacity - draft.attendance
-      : null
+    selectedRoom !== undefined && draft.attendance !== null && draft.attendance > selectedRoom.capacity
+  const ratio =
+    selectedRoom && selectedRoom.capacity > 0 && draft.attendance !== null
+      ? draft.attendance / selectedRoom.capacity
+      : 0
 
   const setDates = (next: string[]) => {
     onChange({
@@ -122,281 +120,251 @@ export function BookingDraftForm({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="sm:col-span-2">
-          <label htmlFor="booking-title" className="mb-1 block text-xs font-medium text-neutral-600">
-            Event title
-          </label>
-          <input
-            id="booking-title"
-            value={draft.title}
-            onChange={(event) => update('title', event.target.value)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
-          />
-        </div>
-        <div>
-          <label htmlFor="booking-attendance" className="mb-1 block text-xs font-medium text-neutral-600">
-            Attendance
-          </label>
-          <input
-            id="booking-attendance"
-            type="number"
-            min={1}
-            value={draft.attendance ?? ''}
-            onChange={(event) =>
-              update('attendance', event.target.value === '' ? null : Number(event.target.value))
-            }
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="booking-reason" className="mb-1 block text-xs font-medium text-neutral-600">
-          Reason for this request <span className="text-rose-600">*</span>
-        </label>
-        <textarea
-          id="booking-reason"
-          rows={2}
-          value={draft.request_reason ?? ''}
-          onChange={(event) => update('request_reason', event.target.value)}
-          placeholder="Why is this venue needed? e.g. Club orientation for first-year students."
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
-        />
-        <p className="mt-1 text-[11px] text-neutral-500">
-          Shown to the approver and kept with the request after the decision. Do not put a decision
-          here; the approver writes that separately.
-        </p>
-      </div>
-
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-neutral-600">Date(s)</legend>
-        <p className="mb-2 text-[11px] text-neutral-500">
-          Pick one or more days. Only upcoming weekdays in the semester weeks are allowed; the exam
-          week is closed. Each date resolves to its weekday and week number.
-        </p>
-        <DatePickerCalendar semester={options.semester} dates={dates} onChange={setDates} />
-      </fieldset>
-
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-neutral-600">Time</legend>
-        <p className="mb-2 text-[11px] text-neutral-500">
-          One period = one hour. The period range and duration are derived from these times — no
-          separate duration field.
-        </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label htmlFor="booking-start" className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
-              From
-            </label>
-            <select
-              id="booking-start"
-              value={startTime}
-              onChange={(event) => setTimes(event.target.value, endTime)}
-              className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
-            >
-              {startTimeOptions().map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="min-w-0 space-y-6">
+        <FormSection title="The event" hint="What it is and how many people come.">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+            <Field label="Title" htmlFor="booking-title" required>
+              <input
+                id="booking-title"
+                value={draft.title}
+                onChange={(event) => update('title', event.target.value)}
+                placeholder="Spectra closing ceremony"
+                className={fieldInput}
+              />
+            </Field>
+            <Field label="Expected" htmlFor="booking-attendance">
+              <input
+                id="booking-attendance"
+                type="number"
+                min={1}
+                value={draft.attendance ?? ''}
+                onChange={(event) =>
+                  update('attendance', event.target.value === '' ? null : Number(event.target.value))
+                }
+                className={cn(fieldInput, 'tabular-nums')}
+              />
+            </Field>
           </div>
-          <div>
-            <label htmlFor="booking-end" className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
-              To
-            </label>
-            <select
-              id="booking-end"
-              value={endTime}
-              onChange={(event) => setTimes(startTime, event.target.value)}
-              className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
-            >
-              {endTimeOptions().map((time) => (
-                <option key={time} value={time}>
-                  {time}
-                </option>
-              ))}
-            </select>
+        </FormSection>
+
+        <FormSection title="When" hint="One period is one hour.">
+          <Field label="Date" htmlFor="booking-dates">
+            <DatePickerCalendar semester={options.semester} dates={dates} onChange={setDates} />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="From" htmlFor="booking-start">
+              <select
+                id="booking-start"
+                value={startTime}
+                onChange={(event) => setTimes(event.target.value, endTime)}
+                className={fieldInput}
+              >
+                {startTimeOptions().map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="To" htmlFor="booking-end">
+              <select
+                id="booking-end"
+                value={endTime}
+                onChange={(event) => setTimes(startTime, event.target.value)}
+                className={fieldInput}
+              >
+                {endTimeOptions().map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </div>
-          {!resolved.error && (
-            <p className="pb-1.5 text-xs font-semibold text-slate-700">
-              P{resolved.from_period}–P{resolved.to_period} · {resolved.duration} period
-              {resolved.duration === 1 ? '' : 's'} · {startTime}–{endTime}
-            </p>
-          )}
-        </div>
-        {timeError && <p className="mt-1 text-xs text-rose-700">{timeError}</p>}
-      </fieldset>
 
-      {dates.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Resolved for {dates.length} date{dates.length === 1 ? '' : 's'}
-          </p>
-          <ul className="mt-1 space-y-0.5 text-xs text-slate-700">
-            {dates.map((iso) => {
-              const day = datasetDay(iso)
-              const week = options.semester ? dateToWeek(options.semester, iso) : null
-              return (
-                <li key={iso}>
-                  <span className="font-semibold">{formatDate(iso)}</span>
-                  {week ? ` · Week ${week.number} (${week.phase})` : ''}
-                  {day ? ` · ${day}` : ''} · P{fromPeriod}–P{toPeriod}
-                </li>
-              )
-            })}
-          </ul>
-          {draft.windows.length !== dates.length && (
-            <p className="mt-1 text-[11px] text-slate-500">
-              {dates.length} date(s) → {draft.windows.length} weekday window(s); the dataset schedules
-              per weekday, so repeated weekdays map to one window.
-            </p>
-          )}
-        </div>
-      )}
-
-      <div>
-        <p className="mb-1 text-xs font-medium text-neutral-600">What is already booked at this slot</p>
-        <AvailabilityPanel
-          checks={availability}
-          loading={availabilityLoading}
-          hint="Pick date(s), time and (optionally) a room to see the existing class, event, exam or block."
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <fieldset>
-          <legend className="mb-2 text-xs font-medium text-neutral-600">Room types</legend>
-          <div className="flex flex-wrap gap-2">
-            {options.roomTypes.map((type) => (
-              <label key={type} className="inline-flex items-center gap-1.5 text-xs text-neutral-700">
-                <input
-                  type="checkbox"
-                  checked={draft.room_types.includes(type)}
-                  onChange={() => update('room_types', toggle(draft.room_types, type))}
-                  className="h-3.5 w-3.5 rounded border-neutral-300"
-                />
-                {type}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset>
-          <legend className="mb-2 text-xs font-medium text-neutral-600">Facilities</legend>
-          <div className="flex flex-wrap gap-2">
-            {options.needs.map((need) => (
-              <label key={need} className="inline-flex items-center gap-1.5 text-xs text-neutral-700">
-                <input
-                  type="checkbox"
-                  checked={draft.needs.includes(need)}
-                  onChange={() => update('needs', toggle(draft.needs, need))}
-                  className="h-3.5 w-3.5 rounded border-neutral-300"
-                />
-                {need}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      </div>
-
-      <div className={`grid grid-cols-1 gap-3 ${showGroups ? 'sm:grid-cols-2' : ''}`}>
-        <div>
-          <label htmlFor="booking-room" className="mb-1 block text-xs font-medium text-neutral-600">
-            Preferred room (optional)
-          </label>
-          <select
-            id="booking-room"
-            value={draft.requested_room ?? ''}
-            onChange={(event) => update('requested_room', event.target.value || null)}
-            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="">Any suitable room</option>
-            {options.rooms.map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.name} — {room.capacity} seats · {room.type}
-              </option>
-            ))}
-          </select>
-          {selectedRoom ? (
-            <div
-              className={`mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${
-                overCapacity
-                  ? 'border-rose-300 bg-rose-50 text-rose-800'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              }`}
-            >
-              <p className="font-semibold">
-                {selectedRoom.name} · {selectedRoom.capacity} seats · {selectedRoom.type}
-                {selectedRoom.accessible ? ' · accessible' : ''}
-              </p>
-              <p>
-                {draft.attendance !== null
-                  ? overCapacity
-                    ? `Attendance ${draft.attendance} exceeds capacity by ${
-                        draft.attendance - selectedRoom.capacity
-                      }.`
-                    : `Attendance ${draft.attendance} · ${spare} seat(s) spare.`
-                  : `Capacity ${selectedRoom.capacity}; enter the attendance to compare.`}
-              </p>
-              {selectedRoom.features.length > 0 && (
-                <p className="text-[10px] opacity-80">Features: {selectedRoom.features.join(', ')}</p>
-              )}
-            </div>
+          {resolved.error ? (
+            <p className="text-[12px] text-rose-700">{resolved.error}</p>
           ) : (
-            <p className="mt-1 text-[11px] text-slate-500">
-              {draft.attendance !== null
-                ? `Needs a room with at least ${draft.attendance} seats.`
-                : 'Pick a room to see its capacity.'}
-            </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <PeriodTape
+                from={resolved.from_period}
+                to={resolved.to_period}
+                tone="granted"
+                labelled
+              />
+              <p className="mt-2 text-[12px] tabular-nums text-slate-600">
+                P{resolved.from_period}–P{resolved.to_period} · {resolved.duration} period
+                {resolved.duration === 1 ? '' : 's'} · {startTime}–{endTime}
+              </p>
+            </div>
           )}
-        </div>
-        {showGroups && (
-          <div>
-            <label htmlFor="booking-groups" className="mb-1 block text-xs font-medium text-neutral-600">
-              Groups that must stay free (admin only)
-            </label>
-            <select
-              id="booking-groups"
-              multiple
-              value={draft.mandatory_for_groups}
-              onChange={(event) =>
-                update(
-                  'mandatory_for_groups',
-                  Array.from(event.target.selectedOptions).map((option) => option.value),
+          {timeError ? <p className="text-[12px] text-rose-700">{timeError}</p> : null}
+
+          {dates.length > 0 ? (
+            <ul className="space-y-1">
+              {dates.map((iso) => {
+                const day = datasetDay(iso)
+                const week = options.semester ? dateToWeek(options.semester, iso) : null
+                return (
+                  <li key={iso} className="text-[12px] text-slate-600">
+                    <span className="text-slate-800">{formatDate(iso)}</span>
+                    {week ? ` · Week ${week.number} (${week.phase})` : ''}
+                    {day ? ` · ${day}` : ''} · P{fromPeriod}–P{toPeriod}
+                  </li>
                 )
-              }
-              className="h-24 w-full rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs"
+              })}
+            </ul>
+          ) : null}
+        </FormSection>
+
+        <FormSection title="Where" hint="Leave the room open and the solver picks for you.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-slate-700">Room types</p>
+              <div className="flex flex-wrap gap-1.5">
+                {options.roomTypes.map((type) => (
+                  <ToggleChip
+                    key={type}
+                    active={draft.room_types.includes(type)}
+                    onClick={() => update('room_types', toggle(draft.room_types, type))}
+                  >
+                    {type.replace(/_/g, ' ')}
+                  </ToggleChip>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-[13px] font-medium text-slate-700">Facilities</p>
+              <div className="flex flex-wrap gap-1.5">
+                {options.needs.map((need) => (
+                  <ToggleChip
+                    key={need}
+                    active={draft.needs.includes(need)}
+                    onClick={() => update('needs', toggle(draft.needs, need))}
+                  >
+                    {need.replace(/_/g, ' ')}
+                  </ToggleChip>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <Field label="Preferred room" htmlFor="booking-room" hint="Optional.">
+            <select
+              id="booking-room"
+              value={draft.requested_room ?? ''}
+              onChange={(event) => update('requested_room', event.target.value || null)}
+              className={fieldInput}
             >
-              {options.groups.map((group) => (
-                <option key={group} value={group}>
-                  {group}
+              <option value="">Any suitable room</option>
+              {options.rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name} · {room.capacity} seats · {room.type}
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-[11px] text-slate-500">
-              Use only when the event needs these students to be free (H13). The booking is blocked
-              if they have a class at the chosen slot.
+          </Field>
+
+          {selectedRoom ? (
+            <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+              <p className="text-[13px] text-slate-800">
+                {selectedRoom.name}
+                <span className="text-slate-500">
+                  {' · '}
+                  {selectedRoom.capacity} seats · {selectedRoom.type}
+                  {selectedRoom.accessible ? ' · accessible' : ''}
+                </span>
+              </p>
+              {draft.attendance !== null ? (
+                <>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className={cn('h-full rounded-full', overCapacity ? 'bg-rose-500' : 'bg-emerald-500')}
+                      style={{ width: `${Math.min(1, Math.abs(ratio)) * 100}%` }}
+                    />
+                  </div>
+                  <p className={cn('mt-1.5 text-[12px]', overCapacity ? 'text-rose-700' : 'text-slate-500')}>
+                    {overCapacity
+                      ? `${draft.attendance} expected, ${draft.attendance - selectedRoom.capacity} over capacity.`
+                      : `${draft.attendance} of ${selectedRoom.capacity} seats · ${
+                          selectedRoom.capacity - draft.attendance
+                        } spare.`}
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-[12px] text-slate-500">Enter the expected attendance to compare.</p>
+              )}
+              {selectedRoom.features.length > 0 ? (
+                <p className="mt-1 text-[12px] text-slate-500">
+                  Has {selectedRoom.features.join(', ')}
+                </p>
+              ) : null}
+            </div>
+          ) : draft.attendance !== null ? (
+            <p className="text-[12px] text-slate-500">
+              Needs a room that seats at least {draft.attendance}.
             </p>
-          </div>
-        )}
+          ) : null}
+        </FormSection>
+
+        {showGroups ? (
+          <FormSection title="Groups that must stay free" hint="Admin only.">
+            <Field
+              label="Student groups"
+              htmlFor="booking-groups"
+              hint="The booking is blocked when one of these groups has a class at the chosen slot."
+            >
+              <select
+                id="booking-groups"
+                multiple
+                value={draft.mandatory_for_groups}
+                onChange={(event) =>
+                  update(
+                    'mandatory_for_groups',
+                    Array.from(event.target.selectedOptions).map((option) => option.value),
+                  )
+                }
+                className={cn(fieldInput, 'h-24 py-1')}
+              >
+                {options.groups.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </FormSection>
+        ) : null}
+
+        <FormSection title="Why" hint="The approver reads this, and it stays on the record.">
+          <Field label="Reason for this request" htmlFor="booking-reason" required>
+            <textarea
+              id="booking-reason"
+              rows={3}
+              value={draft.request_reason ?? ''}
+              onChange={(event) => update('request_reason', event.target.value)}
+              placeholder="Club orientation for first-year students."
+              className={fieldTextarea}
+            />
+          </Field>
+        </FormSection>
       </div>
 
-      <AnimatePresence>
-        {draft.windows.length > 0 && (
-          <motion.p
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.24, ease: SOFT_EASE }}
-            className="text-[11px] text-neutral-500"
-          >
-            Requested windows: {draft.windows.map((window) => `${window.day} P${window.from_period}–P${window.to_period}`).join(' · ')}
-          </motion.p>
-        )}
-      </AnimatePresence>
+      <aside className="min-w-0">
+        <div className="sticky top-4">
+          <h4 className="text-[13px] font-semibold text-slate-900">What already holds this slot</h4>
+          <p className="mb-2 mt-0.5 text-[12px] text-slate-500">
+            Classes, events, exams and blocks on the chosen dates.
+          </p>
+          <AvailabilityPanel
+            checks={availability}
+            loading={availabilityLoading}
+            hint="Pick a date, a time and a room to check the slot against the timetable."
+          />
+        </div>
+      </aside>
     </div>
   )
 }

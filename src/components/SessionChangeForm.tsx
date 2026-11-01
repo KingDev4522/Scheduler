@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock3, DoorOpen } from 'lucide-react'
 import { api, type SessionAvailability } from '../lib/api'
 import type { SessionUser } from '../lib/auth'
 import type { Session } from '../lib/store'
@@ -14,8 +13,11 @@ import {
   timeFromPeriod,
   weekDates,
 } from '../lib/semester'
+import { cn } from '../lib/utils'
 import type { BookingFormOptions } from './BookingDraftForm'
 import { DatePickerCalendar } from './DatePickerCalendar'
+import { PeriodTape } from './PeriodTape'
+import { Field, FormSection, fieldInput, fieldTextarea } from './FormBits'
 
 export interface SessionChangeInitial {
   kind?: string | null
@@ -31,6 +33,25 @@ function firstDateForDay(semester: Semester | null, day: string | null | undefin
   if (!semester || !semester.weeks.length || !day) return null
   const week = semester.weeks[0]
   return weekDates(semester, week.number).find((iso) => datasetDay(iso) === day) ?? null
+}
+
+function Notice({
+  tone,
+  title,
+  children,
+}: {
+  tone: 'rose' | 'amber' | 'emerald'
+  title: string
+  children?: React.ReactNode
+}) {
+  const ink =
+    tone === 'rose' ? 'text-rose-800' : tone === 'amber' ? 'text-amber-900' : 'text-emerald-800'
+  return (
+    <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+      <p className={cn('text-[13px] font-semibold', ink)}>{title}</p>
+      {children}
+    </div>
+  )
 }
 
 export function SessionChangeForm({
@@ -92,7 +113,7 @@ export function SessionChangeForm({
     ? `${session.day} P${session.startPeriod}–P${session.startPeriod + session.periods - 1} · ${
         rooms.find((room) => room.id === session.roomId)?.name ?? session.roomId
       }`
-    : '—'
+    : '–'
 
   useEffect(() => {
     if (!session || !day || !startPeriod || !roomId) {
@@ -156,9 +177,20 @@ export function SessionChangeForm({
     }
   }
 
+  const flashNode = flash ? (
+    <p
+      className={cn(
+        'rounded-lg border border-slate-200 px-3 py-2 text-[13px]',
+        flash.tone === 'success' ? 'text-emerald-800' : 'text-rose-800',
+      )}
+    >
+      {flash.message}
+    </p>
+  ) : null
+
   if (sessions.length === 0) {
     return (
-      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+      <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-[13px] text-slate-500">
         No sessions are available to you for a change request.
       </p>
     )
@@ -166,32 +198,21 @@ export function SessionChangeForm({
 
   if (initial?.kind && initial.kind !== 'move_session') {
     return (
-      <div className="space-y-3">
-        {flash && (
-          <p
-            className={`rounded-lg border px-3 py-2 text-xs ${
-              flash.tone === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                : 'border-rose-200 bg-rose-50 text-rose-800'
-            }`}
-          >
-            {flash.message}
-          </p>
-        )}
-        <p className="text-sm text-slate-700">
-          This is a <span className="font-semibold">{initial.kind.replace(/_/g, ' ')}</span>{' '}
+      <div className="max-w-xl space-y-4">
+        {flashNode}
+        <p className="text-[13px] leading-relaxed text-slate-600">
+          This is a <span className="font-medium text-slate-800">{initial.kind.replace(/_/g, ' ')}</span>{' '}
           request. Submit it for review; the deterministic workflow decides whether it can apply.
         </p>
-        <label className="block text-xs font-medium text-neutral-600">
-          Reason for this change <span className="text-rose-600">*</span>
+        <Field label="Reason for this change" required>
           <textarea
-            rows={2}
+            rows={3}
             value={requestReason}
             onChange={(event) => setRequestReason(event.target.value)}
             placeholder="Why is this change needed? The approver sees this."
-            className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
+            className={fieldTextarea}
           />
-        </label>
+        </Field>
         <button
           type="button"
           disabled={busy}
@@ -206,14 +227,10 @@ export function SessionChangeForm({
             setBusy(true)
             setFlash(null)
             try {
-              const record = await api.createChangeRequest(
-                'Structured change request',
-                user.username,
-                {
-                  ...(initial as unknown as Record<string, unknown>),
-                  request_reason: requestReason.trim(),
-                },
-              )
+              const record = await api.createChangeRequest('Structured change request', user.username, {
+                ...(initial as unknown as Record<string, unknown>),
+                request_reason: requestReason.trim(),
+              })
               setFlash({ tone: 'success', message: `${record.id} submitted for review.` })
               onSubmitted?.()
             } catch (error) {
@@ -225,7 +242,7 @@ export function SessionChangeForm({
               setBusy(false)
             }
           }}
-          className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+          className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50"
         >
           Submit for review
         </button>
@@ -237,198 +254,213 @@ export function SessionChangeForm({
   const warnings = preview?.warnings ?? []
 
   return (
-    <div className="space-y-4">
-      {flash && (
-        <p
-          className={`rounded-lg border px-3 py-2 text-xs ${
-            flash.tone === 'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border-rose-200 bg-rose-50 text-rose-800'
-          }`}
-        >
-          {flash.message}
-        </p>
-      )}
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="min-w-0 space-y-6">
+        {flashNode}
 
-      <label className="block text-xs font-medium text-neutral-600">
-        Reason for this change <span className="text-rose-600">*</span>
-        <textarea
-          rows={2}
-          value={requestReason}
-          onChange={(event) => setRequestReason(event.target.value)}
-          placeholder="Why does this session need to move? The approver sees this."
-          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
-        />
-      </label>
+        <FormSection title="The session" hint="The timetable stays as it is until an Admin approves.">
+          <Field label="Session to move">
+            <select
+              value={sessionId}
+              onChange={(event) => setSessionId(event.target.value)}
+              className={fieldInput}
+            >
+              {sessions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.courseCode} · {item.courseName} · {item.day} P{item.startPeriod}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="text-xs font-medium text-neutral-600">
-          Session to move
-          <select
-            value={sessionId}
-            onChange={(event) => setSessionId(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+          {session ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <PeriodTape
+                from={session.startPeriod}
+                to={session.startPeriod + session.periods - 1}
+                tone="asked"
+                labelled
+              />
+              <p className="mt-2 text-[12px] tabular-nums text-slate-600">Now at {current}</p>
+            </div>
+          ) : null}
+        </FormSection>
+
+        <FormSection title="Move it to" hint="The target date, time and room.">
+          <Field label="Target date">
+            <DatePickerCalendar
+              semester={semester}
+              dates={dates}
+              onChange={(next) => setDates(next.slice(0, 1))}
+            />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="From">
+              <select
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+                className={fieldInput}
+              >
+                {startTimeOptions().map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="To">
+              <select
+                value={endTime}
+                onChange={(event) => setEndTime(event.target.value)}
+                className={fieldInput}
+              >
+                {endTimeOptions().map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Room">
+            <select
+              value={roomId}
+              onChange={(event) => setRoomId(event.target.value)}
+              className={fieldInput}
+            >
+              {rooms.map((room) => (
+                <option key={room.id} value={room.id}>
+                  {room.name} · {room.capacity} seats · {room.type}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {resolved.error ? (
+            <p className="text-[12px] text-rose-700">{resolved.error}</p>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+              <PeriodTape from={resolved.from_period} to={resolved.to_period} tone="granted" labelled />
+              <p className="mt-2 text-[12px] tabular-nums text-slate-600">
+                P{resolved.from_period}–P{resolved.to_period} · {resolved.duration} period
+                {resolved.duration === 1 ? '' : 's'} · {startTime}–{endTime}
+                {dates[0] ? ` · ${formatDate(dates[0])}` : ''}
+              </p>
+            </div>
+          )}
+        </FormSection>
+
+        <FormSection title="Why" hint="The approver reads this, and it stays on the record.">
+          <Field label="Reason for this change" required>
+            <textarea
+              rows={3}
+              value={requestReason}
+              onChange={(event) => setRequestReason(event.target.value)}
+              placeholder="Why does this session need to move?"
+              className={fieldTextarea}
+            />
+          </Field>
+        </FormSection>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (!preview?.ok) {
+                setFlash({
+                  tone: 'error',
+                  message: preview
+                    ? 'This move is blocked. Pick a feasible alternative or clear the red constraints, then submit.'
+                    : 'Choose a valid target date, time and room; the slot check is still running.',
+                })
+                return
+              }
+              void submit()
+            }}
+            disabled={busy}
+            className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {sessions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.courseCode} — {item.courseName} · {item.day} P{item.startPeriod}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <p className="font-semibold text-slate-700">Current slot</p>
-          <p>{current}</p>
+            Submit for review
+          </button>
+          <span className="text-[12px] text-slate-500">
+            Nothing changes until an Admin approves the request.
+          </span>
         </div>
       </div>
 
-      <div>
-        <p className="mb-1 text-xs font-medium text-neutral-600">Target date (first selected)</p>
-        <DatePickerCalendar semester={semester} dates={dates} onChange={(next) => setDates(next.slice(0, 1))} />
-      </div>
+      <aside className="min-w-0">
+        <div className="sticky top-4 space-y-2">
+          <h4 className="text-[13px] font-semibold text-slate-900">Will this move fit?</h4>
+          <p className="text-[12px] text-slate-500">
+            Checked against rooms, faculty, groups, capacity and fixed slots.
+          </p>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-xs font-medium text-neutral-600">
-          From
-          <select
-            value={startTime}
-            onChange={(event) => setStartTime(event.target.value)}
-            className="mt-1 block rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
-          >
-            {startTimeOptions().map((time) => (
-              <option key={time} value={time}>
-                {time}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs font-medium text-neutral-600">
-          To
-          <select
-            value={endTime}
-            onChange={(event) => setEndTime(event.target.value)}
-            className="mt-1 block rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
-          >
-            {endTimeOptions().map((time) => (
-              <option key={time} value={time}>
-                {time}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="min-w-[14rem] flex-1 text-xs font-medium text-neutral-600">
-          Room
-          <select
-            value={roomId}
-            onChange={(event) => setRoomId(event.target.value)}
-            className="mt-1 block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-          >
-            {rooms.map((room) => (
-              <option key={room.id} value={room.id}>
-                {room.name} — {room.capacity} seats · {room.type}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {resolved.error ? (
-        <p className="text-xs text-rose-700">{resolved.error}</p>
-      ) : (
-        <p className="text-xs font-semibold text-slate-700">
-          P{resolved.from_period}–P{resolved.to_period} · {resolved.duration} period
-          {resolved.duration === 1 ? '' : 's'} · {startTime}–{endTime}
-          {dates[0] ? ` · ${formatDate(dates[0])}` : ''}
-        </p>
-      )}
-
-      {preview && (
-        <div className="space-y-2">
-          {blocked.length > 0 && (
-            <div className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-rose-900">
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Blocked — this move violates a hard constraint
-              </p>
-              <ul className="mt-1 space-y-0.5 text-[11px] text-rose-800">
+          {blocked.length > 0 ? (
+            <Notice tone="rose" title="Blocked by a hard constraint">
+              <ul className="mt-1 space-y-1">
                 {blocked.map((item) => (
-                  <li key={`${item.rule}-${item.detail}`}>
-                    <span className="font-semibold">{item.rule}</span> · {item.detail}
+                  <li key={`${item.rule}-${item.detail}`} className="text-[12px] leading-relaxed text-rose-800">
+                    <span className="font-medium">{item.rule}</span> · {item.detail}
+                  </li>
+                ))}
+              </ul>
+            </Notice>
+          ) : null}
+
+          {warnings.length > 0 ? (
+            <Notice tone="amber" title="Soft warnings, still submittable">
+              <ul className="mt-1 space-y-1">
+                {warnings.map((warning) => (
+                  <li key={warning} className="text-[12px] leading-relaxed text-amber-900">
+                    {warning}
+                  </li>
+                ))}
+              </ul>
+            </Notice>
+          ) : null}
+
+          {preview && preview.ok && blocked.length === 0 ? (
+            <Notice tone="emerald" title="Feasible" />
+          ) : null}
+
+          {!preview ? (
+            <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-[12px] leading-relaxed text-slate-500">
+              Pick a target date, time and room to run the check.
+            </p>
+          ) : null}
+
+          {alternatives.length > 0 ? (
+            <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+              <p className="text-[12px] text-slate-500">Slots that would work</p>
+              <ul className="mt-1.5 space-y-1">
+                {alternatives.map((alternative) => (
+                  <li key={`${alternative.room_id}-${alternative.day}-${alternative.start_period}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomId(alternative.room_id)
+                        setStartTime(timeFromPeriod(alternative.start_period))
+                        setEndTime(PERIOD_TIMES[alternative.end_period]?.end ?? endTime)
+                        const iso = firstDateForDay(semester, alternative.day)
+                        if (iso) setDates([iso])
+                      }}
+                      className="w-full rounded-md border border-slate-200 px-2 py-1 text-left text-[12px] text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 dark:focus-visible:ring-slate-300"
+                    >
+                      <span className="text-slate-900">{alternative.room_id}</span>
+                      <span className="text-slate-500">
+                        {' · '}
+                        {alternative.day} P{alternative.start_period}
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
             </div>
-          )}
-          {warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Soft warnings — submission is allowed
-              </p>
-              <ul className="mt-1 space-y-0.5 text-[11px] text-amber-800">
-                {warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {preview.ok && blocked.length === 0 && (
-            <p className="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Feasible — submit for review.
-            </p>
-          )}
-          {alternatives.length > 0 && (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <p className="text-[11px] font-semibold text-slate-700">
-                Deterministic alternatives
-              </p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {alternatives.map((alternative) => (
-                  <button
-                    key={`${alternative.room_id}-${alternative.day}-${alternative.start_period}`}
-                    type="button"
-                    onClick={() => {
-                      setRoomId(alternative.room_id)
-                      setStartTime(timeFromPeriod(alternative.start_period))
-                      setEndTime(PERIOD_TIMES[alternative.end_period]?.end ?? endTime)
-                      const iso = firstDateForDay(semester, alternative.day)
-                      if (iso) setDates([iso])
-                    }}
-                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700"
-                  >
-                    <DoorOpen className="mr-1 inline h-3 w-3" aria-hidden />
-                    {alternative.room_id} · {alternative.day} P{alternative.start_period}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            if (!preview?.ok) {
-              setFlash({
-                tone: 'error',
-                message: preview
-                  ? 'This move is blocked. Pick a feasible alternative or fix the red constraints, then submit.'
-                  : 'Choose a valid target date, time and room; the slot check is still running.',
-              })
-              return
-            }
-            void submit()
-          }}
-          disabled={busy}
-          className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Submit for review
-        </button>
-        <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
-          <Clock3 className="h-3 w-3" aria-hidden />
-          The current timetable stays unchanged until an Admin approves.
-        </span>
-      </div>
+      </aside>
     </div>
   )
 }

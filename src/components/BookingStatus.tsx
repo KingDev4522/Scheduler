@@ -47,12 +47,11 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        'inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[12px] font-medium',
+        'inline-flex max-w-full items-center rounded-md border px-2 py-0.5 text-[12px] font-medium',
         PILL[status],
         className,
       )}
     >
-      <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[status])} aria-hidden />
       <span className="truncate">{STATUS_LABEL[status]}</span>
     </span>
   )

@@ -101,7 +101,7 @@ export function DatePickerCalendar({
         <div
           role="dialog"
           aria-label="Choose booking dates"
-          className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-slate-200 bg-white p-3 shadow-2xl"
+          className="absolute z-50 mt-2 w-[19rem] rounded-xl border border-slate-200 bg-white p-3 shadow-lg"
         >
           {!semester ? (
             <p className="text-xs text-slate-500">
@@ -135,7 +135,7 @@ export function DatePickerCalendar({
 
               <div className="mt-2 grid grid-cols-7 gap-1">
                 {DOW.map((day) => (
-                  <span key={day} className="text-center text-[9px] font-semibold uppercase text-slate-400">
+                  <span key={day} className="text-center text-[11px] text-slate-400">
                     {day}
                   </span>
                 ))}
@@ -155,7 +155,7 @@ export function DatePickerCalendar({
                           ? `${formatDate(iso)} · Week ${week?.number} · click to ${selected ? 'remove' : 'add'}`
                           : `${formatDate(iso)} · not bookable`
                       }
-                      className={`flex h-8 flex-col items-center justify-center rounded-md text-[11px] font-semibold transition-colors ${
+                      className={`flex h-8 flex-col items-center justify-center rounded-md text-[12px] font-medium tabular-nums transition-colors ${
                         selected
                           ? 'bg-slate-900 text-white'
                           : selectable
@@ -166,18 +166,15 @@ export function DatePickerCalendar({
                       }`}
                     >
                       {parseIso(iso).getUTCDate()}
-                      {week && inMonth && (
-                        <span className={`text-[8px] leading-none ${selected ? 'text-slate-200' : 'text-slate-400'}`}>
-                          W{week.number}
-                        </span>
-                      )}
                     </button>
                   )
                 })}
               </div>
 
-              <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                <span>Upcoming weekdays · weeks 1–{semester.exam_week - 1} · W{semester.exam_week} is exams</span>
+              <div className="mt-2 flex items-center justify-between text-[12px] text-slate-500">
+                <span>
+                  Upcoming weekdays · weeks 1–{semester.exam_week - 1} · W{semester.exam_week} is exams
+                </span>
                 {dates.length > 0 && (
                   <button type="button" onClick={() => onChange([])} className="font-semibold text-slate-600 hover:underline">
                     Clear

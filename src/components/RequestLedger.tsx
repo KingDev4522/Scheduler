@@ -20,22 +20,44 @@ function TierChip({ tier }: { tier: 1 | 2 | 3 }) {
   )
 }
 
+function TitleButton({
+  row,
+  onOpen,
+  className,
+}: {
+  row: BoardRow
+  onOpen: (id: string) => void
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation()
+        onOpen(row.id)
+      }}
+      title={`Open ${row.title}`}
+      className={cn(
+        'block w-full truncate text-left text-[14px] font-semibold text-slate-900',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-300 dark:focus-visible:ring-offset-slate-950',
+        className,
+      )}
+    >
+      {row.title}
+    </button>
+  )
+}
+
 function SlotCell({ row }: { row: BoardRow }) {
   const asked = row.windows[0]
   return (
     <>
-      <p className="truncate text-[14px] text-slate-800">
-        {row.roomName ?? 'No venue assigned'}
-      </p>
+      <p className="truncate text-[14px] text-slate-800">{row.roomName ?? 'No venue assigned'}</p>
       <p className="mt-0.5 truncate text-[12px] tabular-nums text-slate-500">
-        {row.granted
-          ? `${formatSlot(row.granted)} · ${formatSlotTime(row.granted)}`
-          : 'no slot granted'}
+        {row.granted ? `${formatSlot(row.granted)} · ${formatSlotTime(row.granted)}` : 'no slot granted'}
       </p>
       {row.moved && asked ? (
-        <p className="mt-0.5 truncate text-[12px] text-amber-700">
-          asked {formatSlot(asked)}
-        </p>
+        <p className="mt-0.5 truncate text-[12px] text-amber-700">asked {formatSlot(asked)}</p>
       ) : null}
     </>
   )
@@ -43,13 +65,13 @@ function SlotCell({ row }: { row: BoardRow }) {
 
 export function RequestLedger({
   rows,
-  selectedId,
-  onSelect,
+  openId,
+  onOpen,
   onClearFilters,
 }: {
   rows: BoardRow[]
-  selectedId: string | null
-  onSelect: (id: string) => void
+  openId: string | null
+  onOpen: (id: string) => void
   onClearFilters: () => void
 }) {
   if (rows.length === 0) {
@@ -76,7 +98,8 @@ export function RequestLedger({
       <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white lg:block">
         <table className="w-full table-fixed border-collapse text-left">
           <caption className="sr-only">
-            The {rows.length} venue requests on the Spectra board, with the slot each one was granted.
+            The {rows.length} venue requests on the Spectra board, with the slot each one was
+            granted.
           </caption>
           <colgroup>
             <col className="w-[34%]" />
@@ -87,19 +110,13 @@ export function RequestLedger({
           </colgroup>
           <thead>
             <tr className="border-b border-slate-200">
-              <th
-                scope="col"
-                className="px-4 py-2.5 text-[12px] font-medium text-slate-500"
-              >
+              <th scope="col" className="px-4 py-2.5 text-[12px] font-medium text-slate-500">
                 Request
               </th>
               <th scope="col" className="px-3 py-2.5 text-[12px] font-medium text-slate-500">
                 Venue and slot
               </th>
-              <th
-                scope="col"
-                className="px-3 py-2.5 text-right text-[12px] font-medium text-slate-500"
-              >
+              <th scope="col" className="px-3 py-2.5 text-right text-[12px] font-medium text-slate-500">
                 Expected
               </th>
               <th scope="col" className="px-3 py-2.5 text-[12px] font-medium text-slate-500">
@@ -112,21 +129,18 @@ export function RequestLedger({
           </thead>
           <tbody className="cit-stagger-rows">
             {rows.map((row) => {
-              const active = row.id === selectedId
+              const active = row.id === openId
               return (
                 <tr
                   key={row.id}
-                  id={`ledger-${row.id}`}
-                  onClick={() => onSelect(row.id)}
+                  onClick={() => onOpen(row.id)}
                   className={cn(
                     'cursor-pointer border-b border-slate-100 align-middle transition-colors duration-150 last:border-b-0',
                     active ? 'bg-slate-100' : 'hover:bg-slate-50',
                   )}
                 >
                   <td className="px-4 py-3">
-                    <p className="truncate text-[14px] font-semibold text-slate-900" title={row.title}>
-                      {row.title}
-                    </p>
+                    <TitleButton row={row} onOpen={onOpen} />
                     <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[12px] text-slate-500">
                       <span className="shrink-0 tabular-nums">{row.id}</span>
                       <TierChip tier={row.tier} />
@@ -169,19 +183,19 @@ export function RequestLedger({
 
       <ul className="cit-stagger space-y-2 lg:hidden">
         {rows.map((row) => {
-          const active = row.id === selectedId
+          const active = row.id === openId
           return (
-            <li key={row.id} id={`ledger-m-${row.id}`}>
+            <li key={row.id}>
               <article
-                onClick={() => onSelect(row.id)}
+                onClick={() => onOpen(row.id)}
                 className={cn(
                   'cursor-pointer rounded-xl border bg-white p-3.5 transition-colors duration-150',
                   active ? 'border-slate-400 bg-slate-50' : 'border-slate-200',
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-[14px] font-semibold text-slate-900">{row.title}</p>
+                  <div className="min-w-0 flex-1">
+                    <TitleButton row={row} onOpen={onOpen} />
                     <p className="mt-0.5 flex items-center gap-1.5 text-[12px] text-slate-500">
                       <span className="tabular-nums">{row.id}</span>
                       <TierChip tier={row.tier} />
@@ -194,9 +208,7 @@ export function RequestLedger({
                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2">
                   <div className="min-w-0">
                     <dt className="text-[12px] text-slate-500">Venue</dt>
-                    <dd className="truncate text-[13px] text-slate-800">
-                      {row.roomName ?? 'No venue'}
-                    </dd>
+                    <dd className="truncate text-[13px] text-slate-800">{row.roomName ?? 'No venue'}</dd>
                   </div>
                   <div className="min-w-0">
                     <dt className="text-[12px] text-slate-500">Slot</dt>
@@ -227,12 +239,6 @@ export function RequestLedger({
                 {row.moved && row.windows[0] ? (
                   <p className="mt-2 text-[12px] text-amber-700">
                     Asked for {formatSlot(row.windows[0])}
-                  </p>
-                ) : null}
-
-                {row.reason ? (
-                  <p className="mt-2 line-clamp-3 text-[12px] leading-relaxed text-slate-600">
-                    {row.reason}
                   </p>
                 ) : null}
               </article>

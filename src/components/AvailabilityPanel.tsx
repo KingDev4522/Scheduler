@@ -1,32 +1,17 @@
-import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+import { cn } from '../lib/utils'
 import type { OccupancyCheck } from '../lib/api'
 import { formatDate } from '../lib/semester'
 
 const TONE = {
-  free: {
-    wrap: 'border-emerald-200 bg-emerald-50',
-    text: 'text-emerald-900',
-    icon: CheckCircle2,
-    label: 'Free',
-  },
-  warning: {
-    wrap: 'border-amber-300 bg-amber-50',
-    text: 'text-amber-900',
-    icon: AlertTriangle,
-    label: 'Warning',
-  },
-  blocked: {
-    wrap: 'border-rose-300 bg-rose-50',
-    text: 'text-rose-900',
-    icon: AlertTriangle,
-    label: 'Blocked',
-  },
+  free: { ink: 'text-emerald-800', label: 'Free' },
+  warning: { ink: 'text-amber-900', label: 'Tight' },
+  blocked: { ink: 'text-rose-800', label: 'Blocked' },
 } as const
 
 export function AvailabilityPanel({
   checks,
   loading,
-  hint = 'Pick dates and a room to see what is already booked at that slot.',
+  hint = 'Pick dates and a room to see what already holds that slot.',
 }: {
   checks: OccupancyCheck[] | null
   loading: boolean
@@ -34,89 +19,87 @@ export function AvailabilityPanel({
 }) {
   if (loading && !checks) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        Checking what is already booked…
+      <div className="space-y-2" role="status" aria-live="polite">
+        <span className="sr-only">Checking what already holds this slot.</span>
+        <div className="cit-skeleton h-3 w-40" />
+        <div className="cit-skeleton h-3 w-full" />
+        <div className="cit-skeleton h-3 w-2/3" />
       </div>
     )
   }
+
   if (!checks || checks.length === 0) {
     return (
-      <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+      <p className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-[12px] leading-relaxed text-slate-500">
         {hint}
-      </div>
+      </p>
     )
   }
 
   return (
-    <div className="space-y-2">
+    <ul className="space-y-2.5">
       {checks.map((check) => {
         const tone = TONE[check.severity]
-        const Icon = tone.icon
         return (
-          <div key={check.date} className={`rounded-lg border px-3 py-2 ${tone.wrap}`}>
-            <p className={`flex flex-wrap items-center gap-1.5 text-xs font-semibold ${tone.text}`}>
-              <Icon className="h-3.5 w-3.5" aria-hidden />
-              {tone.label} · {formatDate(check.date)}
+          <li key={check.date} className="rounded-lg border border-slate-200 px-3 py-2.5">
+            <p className="text-[13px] text-slate-800">
+              <span className={cn('font-semibold', tone.ink)}>{tone.label}</span>
+              {' · '}
+              {formatDate(check.date)}
               {check.week ? ` · Week ${check.week}` : ''}
               {check.room_name ? ` · ${check.room_name}` : ''}
               {check.capacity ? ` · ${check.capacity} seats` : ''}
             </p>
-            <p className={`mt-0.5 text-xs leading-relaxed ${tone.text}`}>{check.message}</p>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-slate-600">{check.message}</p>
 
-            {check.entries.length > 0 && (
+            {check.entries.length > 0 ? (
               <ul className="mt-1.5 space-y-1">
                 {check.entries.map((entry, index) => (
                   <li
                     key={`${entry.kind}-${entry.source_id ?? index}-${entry.title}`}
-                    className="rounded border border-white/70 bg-white/70 px-2 py-1 text-[11px] text-slate-700"
+                    className="text-[12px] leading-relaxed text-slate-600"
                   >
                     <span
-                      className={`mr-1.5 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-                        entry.severity === 'blocked'
-                          ? 'bg-rose-200 text-rose-900'
-                          : 'bg-amber-200 text-amber-900'
-                      }`}
+                      className={cn(
+                        'font-medium',
+                        entry.severity === 'blocked' ? 'text-rose-700' : 'text-amber-800',
+                      )}
                     >
-                      {entry.kind}
+                      {entry.kind.replace(/_/g, ' ')}
                     </span>
-                    <span className="font-semibold">{entry.title}</span>
-                    {entry.detail ? ` — ${entry.detail}` : ''}
-                    {entry.status ? ` · ${entry.status.replace(/_/g, ' ')}` : ''}
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {check.candidates && check.candidates.length > 0 && (
-              <ul className="mt-1.5 grid grid-cols-1 gap-1 sm:grid-cols-2">
-                {check.candidates.map((candidate) => (
-                  <li
-                    key={candidate.room_id}
-                    className="rounded border border-white/70 bg-white/70 px-2 py-1 text-[11px] text-slate-700"
-                  >
-                    <span className="font-semibold">{candidate.room_name}</span>
-                    {candidate.capacity ? ` · ${candidate.capacity} seats` : ''}
                     {' · '}
-                    <span
-                      className={
-                        candidate.severity === 'free'
-                          ? 'text-emerald-700'
-                          : candidate.severity === 'warning'
-                            ? 'text-amber-700'
-                            : 'text-rose-700'
-                      }
-                    >
-                      {candidate.severity}
-                    </span>
-                    {candidate.severity !== 'free' ? ` — ${candidate.message}` : ''}
+                    <span className="text-slate-800">{entry.title}</span>
+                    {entry.detail ? <span className="text-slate-500"> · {entry.detail}</span> : null}
+                    {entry.status ? (
+                      <span className="text-slate-500"> · {entry.status.replace(/_/g, ' ')}</span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
+            ) : null}
+
+            {check.candidates && check.candidates.length > 0 ? (
+              <ul className="mt-1.5 space-y-1">
+                {check.candidates.map((candidate) => (
+                  <li key={candidate.room_id} className="text-[12px] leading-relaxed text-slate-600">
+                    <span className="text-slate-800">{candidate.room_name}</span>
+                    {candidate.capacity ? (
+                      <span className="text-slate-500"> · {candidate.capacity} seats</span>
+                    ) : null}
+                    <span className={cn('font-medium', TONE[candidate.severity].ink)}>
+                      {' · '}
+                      {TONE[candidate.severity].label}
+                    </span>
+                    {candidate.severity !== 'free' ? (
+                      <span className="text-slate-500"> · {candidate.message}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
         )
       })}
-    </div>
+    </ul>
   )
 }

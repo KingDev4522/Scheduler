@@ -2,7 +2,7 @@ import { motion } from 'framer-motion'
 import type { BookingStatus } from '../lib/store'
 import { SOFT_EASE } from '../lib/motion'
 import { cn } from '../lib/utils'
-import { STATUS_DOT, STATUS_LABEL } from './BookingStatus'
+import { STATUS_LABEL } from './BookingStatus'
 
 export type StatusFilter = 'all' | BookingStatus
 
@@ -46,29 +46,13 @@ export function BookingStatusCards({
                 : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
             )}
           >
-            <span className="flex min-w-0 items-center gap-1.5">
-              {card.key === 'all' ? (
-                <span
-                  aria-hidden
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    active ? 'bg-current opacity-60' : 'bg-slate-300',
-                  )}
-                />
-              ) : (
-                <span
-                  aria-hidden
-                  className={cn('h-1.5 w-1.5 shrink-0 rounded-full', STATUS_DOT[card.key])}
-                />
+            <span
+              className={cn(
+                'truncate text-[12px] font-medium',
+                active ? 'opacity-75' : 'text-slate-500',
               )}
-              <span
-                className={cn(
-                  'truncate text-[12px] font-medium',
-                  active ? 'opacity-75' : 'text-slate-500',
-                )}
-              >
-                {card.label}
-              </span>
+            >
+              {card.label}
             </span>
             <span
               className={cn(
