@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from .data import Data
@@ -18,8 +19,8 @@ def build_schedule(
     exams: dict[str, tuple[str, str, list[str]]],
 ) -> dict:
     return {
-        "team": TEAM,
-        "dataset_id": DATASET_ID,
+        "team": os.getenv("TEAM_NAME", TEAM),
+        "dataset_id": data.raw.get("dataset_id", DATASET_ID),
         "sessions": [
             {"session_id": sid, "day": day, "start_period": start, "room_id": room}
             for sid, (day, start, room) in sorted(timetable.items())

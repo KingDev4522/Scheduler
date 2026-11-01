@@ -12,7 +12,9 @@ import {
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState, StatusNotice } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
 import { useAuth } from '../lib/auth'
+import { canCoordinatorDecideSession } from '../lib/departments'
 import {
   api,
   type AvailabilityEntry,
@@ -32,6 +34,7 @@ export default function Workspace() {
   const { user } = useAuth()
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [booting, setBooting] = useState(true)
 
   const [dataset, setDataset] = useState<DatasetInfo | null>(null)
   const [facultyId, setFacultyId] = useState('')
@@ -49,6 +52,7 @@ export default function Workspace() {
   const isFaculty = user?.role === 'faculty'
   const isAdmin = user?.role === 'admin'
   const isClub = user?.role === 'event_manager'
+  const isCoordinator = user?.role === 'department_coordinator'
 
   const loadAvailability = useCallback(
     async (id?: string) => {
@@ -77,33 +81,64 @@ export default function Workspace() {
   }, [user])
 
   useEffect(() => {
-    if (!user) return
-    void loadRequests()
-    if (isFaculty) void loadAvailability()
-    if (isAdmin) {
-      api
-        .dataset(user.username)
-        .then((result) => {
-          setDataset(result)
-          const first = result.entities.faculty[0]?.id
-          if (first) {
-            setFacultyId(first)
-            void loadAvailability(first)
+    if (!user) {
+      setBooting(false)
+      return
+    }
+
+    let active = true
+    const bootstrap = async () => {
+      try {
+        await loadRequests()
+        if (!active) return
+
+        if (isFaculty) await loadAvailability()
+        if (!active) return
+
+        if (isAdmin || isCoordinator) {
+          try {
+            const result = await api.dataset(user.username)
+            if (!active) return
+            setDataset(result)
+            if (isAdmin) {
+              const first = result.entities.faculty[0]?.id
+              if (first) {
+                setFacultyId(first)
+                await loadAvailability(first)
+              }
+            }
+          } catch {
+            /* the page still works without the dataset */
           }
-        })
-        .catch(() => undefined)
-      api
-        .policy(user.username)
-        .then((result) => setPolicyOrder(result.priority_order))
-        .catch(() => undefined)
+
+          if (isAdmin) {
+            try {
+              const result = await api.policy(user.username)
+              if (active) setPolicyOrder(result.priority_order)
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+
+        if (isClub) {
+          try {
+            const result = await api.listBookings(user.username)
+            if (active) setBookings(result.items)
+          } catch {
+            /* ignore */
+          }
+        }
+      } finally {
+        if (active) setBooting(false)
+      }
     }
-    if (isClub) {
-      api
-        .listBookings(user.username)
-        .then((result) => setBookings(result.items))
-        .catch(() => undefined)
+
+    void bootstrap()
+    return () => {
+      active = false
     }
-  }, [user, isFaculty, isAdmin, isClub, loadAvailability, loadRequests])
+  }, [user, isFaculty, isAdmin, isClub, isCoordinator, loadAvailability, loadRequests])
 
   const selectedFaculty = useMemo(
     () => dataset?.entities.faculty.find((member) => member.id === facultyId),
@@ -111,6 +146,10 @@ export default function Workspace() {
   )
 
   if (!user) return null
+
+  if (booting) {
+    return <PageSkeleton label="Loading your workspace…" variant="form" rows={4} />
+  }
 
   const addEntry = () => {
     if (periods.length === 0) {
@@ -238,7 +277,7 @@ export default function Workspace() {
   }
 
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="My workspace"
         subtitle="Role-specific actions: faculty availability and change requests, club cancellations, and Admin review."
@@ -247,7 +286,7 @@ export default function Workspace() {
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
 
       {(isFaculty || isAdmin) && (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="cit-card rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
               <UserRound className="h-4 w-4 text-neutral-700" aria-hidden />
@@ -278,7 +317,7 @@ export default function Workspace() {
             </label>
           )}
 
-          <ul className="mt-3 space-y-2">
+          <ul className="cit-stagger mt-3 space-y-2">
             {entries.length === 0 ? (
               <li className="text-sm text-slate-400">No unavailability recorded.</li>
             ) : (
@@ -382,15 +421,15 @@ export default function Workspace() {
         </section>
       )}
 
-      {(isFaculty || isAdmin) && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      {(isFaculty || isAdmin || isCoordinator) && (
+        <section className="cit-card mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <Send className="h-4 w-4 text-neutral-700" aria-hidden />
             Request a session change
           </h3>
           <p className="mt-1 text-xs text-slate-500">
             Describe a move, cancellation or extra session. Gemini extracts the target; the
-            deterministic workflow and Admin decide what happens.
+            deterministic workflow and the owning department/Admin decide what happens.
           </p>
           <textarea
             rows={3}
@@ -411,7 +450,7 @@ export default function Workspace() {
       )}
 
       {isClub && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="cit-card mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <CalendarDays className="h-4 w-4 text-neutral-700" aria-hidden />
             My booking requests
@@ -425,7 +464,7 @@ export default function Workspace() {
               />
             </div>
           ) : (
-            <ul className="mt-3 divide-y divide-slate-100">
+            <ul className="cit-stagger mt-3 divide-y divide-slate-100">
               {bookings.map((booking) => (
                 <li key={booking.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                   <div>
@@ -454,7 +493,7 @@ export default function Workspace() {
       )}
 
       {isAdmin && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="cit-card mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <Clock3 className="h-4 w-4 text-neutral-700" aria-hidden />
             Spectra priority order
@@ -463,7 +502,7 @@ export default function Workspace() {
             Highest priority first. Saving clears the current generated schedule so the policy is
             applied on the next generate.
           </p>
-          <ol className="mt-3 space-y-1.5">
+          <ol className="cit-stagger mt-3 space-y-1.5">
             {policyOrder.map((category, index) => (
               <li
                 key={category}
@@ -517,7 +556,7 @@ export default function Workspace() {
         {changeRequests.length === 0 ? (
           <p className="mt-3 text-sm text-slate-400">No change requests yet.</p>
         ) : (
-          <ul className="mt-3 divide-y divide-slate-100">
+          <ul className="cit-stagger mt-3 divide-y divide-slate-100">
             {changeRequests.map((record) => (
               <li key={record.id} className="py-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -530,9 +569,29 @@ export default function Workspace() {
                     {record.follow_up.length > 0 && (
                       <p className="mt-1 text-xs text-amber-700">{record.follow_up[0]}</p>
                     )}
+                    {record.alternatives && record.alternatives.length > 0 && (
+                      <div className="mt-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-[11px] text-neutral-700">
+                        <p className="font-semibold">Deterministic alternatives</p>
+                        <ul className="mt-1 space-y-0.5">
+                          {record.alternatives.map((alternative) => (
+                            <li key={`${alternative.session_id}-${alternative.day}-${alternative.start_period}-${alternative.room_id}`}>
+                              {alternative.room_id} · {alternative.day} P{alternative.start_period}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {record.reason && <p className="mt-1 text-xs text-slate-600">{record.reason}</p>}
                   </div>
-                  {isAdmin && record.status === 'pending' && (
+                  {record.status === 'pending' &&
+                    (user.role === 'admin' ||
+                      (user.role === 'department_coordinator' &&
+                        canCoordinatorDecideSession(
+                          user,
+                          dataset,
+                          String((record.draft as Record<string, unknown>)?.session_id ?? ''),
+                        ))) &&
+                    record.requester !== user.username && (
                     <div className="flex gap-1.5">
                       <button
                         type="button"

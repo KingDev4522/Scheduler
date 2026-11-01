@@ -23,7 +23,7 @@ export function PageHeader({
       <div className="min-w-0">
         {showTitle && <h2 className="text-xl font-semibold text-slate-900">{title}</h2>}
         {subtitle && (
-          <p className={`max-w-3xl text-sm text-slate-500 ${showTitle ? 'mt-1' : ''}`}>
+          <p className={`max-w-3xl text-base font-medium text-black ${showTitle ? 'mt-1' : ''}`}>
             {subtitle}
           </p>
         )}

@@ -60,7 +60,7 @@ export default function Privacy() {
   }, [])
 
   return (
-    <section id="engine" ref={rootRef} className="relative -mt-32 flex min-h-[100svh] flex-col justify-center overflow-hidden px-6 pb-28 pt-44 md:-mt-44 md:px-10 md:pt-48">
+    <section id="engine" ref={rootRef} aria-label="How CIT Scheduler validates" className="relative -mt-32 flex min-h-[100svh] flex-col justify-center overflow-hidden px-6 pb-28 pt-44 md:-mt-44 md:px-10 md:pt-48">
       {/* Black-blur bridge: melts the showcase into this section. No seam. */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-72 md:h-96">
         <div className="absolute inset-0 backdrop-blur-2xl [mask-image:linear-gradient(to_bottom,transparent,black_60%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent,black_60%)]" />
@@ -90,19 +90,21 @@ export default function Privacy() {
             <h2 className="max-w-[46rem]">
               <span className="-mb-[0.09em] block overflow-hidden pb-[0.09em]">
                 <span className="priv-line-inner block font-display text-[clamp(2.5rem,5.2vw,4.75rem)] font-semibold leading-[1.02] tracking-[-0.032em] text-[#EDEAE2]">
-                  Your camera stream
+                  Every schedule is
                 </span>
               </span>
               <span className="-mb-[0.12em] block overflow-hidden pb-[0.12em]">
                 <span className="priv-line-inner block pl-[0.55em] font-serif-aesthetic text-[clamp(2rem,4.2vw,3.7rem)] font-normal italic leading-[1.06] tracking-[-0.008em] text-amber-100/90">
-                  never leaves this device.
+                  checked before it is written.
                 </span>
               </span>
             </h2>
 
             <p className="priv-fade mt-7 max-w-[420px] text-[14px] font-light leading-[1.85] tracking-[0.005em] text-neutral-400">
-              Every frame is interpreted locally: tracking, matching, grammar
-              and speech happen inside your browser. Nothing is uploaded.
+              Hard constraints run in Python, not in a language model. The
+              assistant turns plain English into an editable booking draft;
+              deterministic validation still decides what is legal, what wins a
+              room, and what gets exported.
             </p>
           </div>
           <div className="lg:col-span-4">
@@ -112,13 +114,13 @@ export default function Privacy() {
                 className="absolute left-1/2 top-1/2 h-[80%] w-[90%] -translate-x-1/2 -translate-y-1/2 bg-[radial-gradient(ellipse_at_center,rgba(85,234,212,0.08),rgba(197,0,60,0.06)_55%,transparent_72%)]"
               />
               <img
-                src="/LOGO.png"
-                alt="SignSpeak emblem: a hand reaching toward a computer"
+                src="/landing-emblem.png"
+                alt="CIT Scheduler emblem: a hand reaching toward a computer"
                 loading="lazy"
                 className="absolute inset-x-0 top-0 bottom-8 w-full object-contain mix-blend-screen"
               />
               <p className="absolute bottom-0 left-0 font-mono-tech text-[10px] uppercase tracking-[0.3em] text-neutral-600">
-                Hand to machine, on this device alone
+                Deterministic checks · human approval · auditable exports
               </p>
             </div>
           </div>

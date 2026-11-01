@@ -1,12 +1,12 @@
-/* Landing styles - ported from signspeak-landing/src/index.css (Tailwind v4 → v3).
- * Theme tokens live in tailwind.config.js. Everything here is either scoped
- * under .landing-root or inert unless a landing class is present, so app
- * routes are unaffected. Imported only by src/pages/LandingPage.jsx. */
+/* Landing styles - ported from the editorial landing layout (Tailwind v4 → v3).
+ * Theme tokens live in the host app's index.css under @theme. Everything here
+ * is either scoped under .landing-root or inert unless a landing class is
+ * present, so app routes are unaffected. Imported by the landing App. */
 
 .landing-root {
   background: #070709;
   color: #f5f5f4;
-  font-family: "Space Grotesk", "Inter Tight", system-ui, sans-serif;
+  font-family: "Instrument Sans", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -296,4 +296,44 @@ html.lenis body {
     opacity: 1 !important;
     transform: none !important;
   }
+}
+
+/* ── Mounted inside the main CIT Scheduler app ───────────────────────────
+   The landing page is the public route ("/") of the main SPA. Keep the app
+   shell's light theme from showing through and restore landing-only chrome
+   that used to come from the standalone build's index.css. */
+html.landing-scroll,
+html.landing-scroll body {
+  background: #070709;
+  color-scheme: dark;
+}
+
+.landing-root :focus-visible {
+  outline: 2px solid #ffb703;
+  outline-offset: 4px;
+  border-radius: 0.5rem;
+}
+
+.landing-root .ss-site-nav__status--online > span:first-child {
+  background: #c8ff00;
+}
+
+.landing-root .ss-site-nav__status--offline > span:first-child {
+  background: #ffb703;
+}
+
+.landing-root .ss-site-nav__status--checking > span:first-child {
+  background: rgba(245, 245, 244, 0.46);
+}
+
+.landing-root .ss-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255, 183, 3, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 183, 3, 0.08);
+  padding: 0.2rem 0.45rem;
+  color: #ffb703;
+  font-size: 0.5625rem;
+  font-weight: 700;
 }

@@ -194,15 +194,30 @@ def solve_weekly(
                 model.AddBoolAnd([pre, suf, busy[p].Not()]).OnlyEnforceIf(gap)
                 model.AddBoolOr([pre.Not(), suf.Not(), busy[p]]).OnlyEnforceIf(gap.Not())
                 terms.append(gap)
-            hours = sum(
+            hours_terms = [
                 x[(s["id"], t)] * s["duration"]
                 for s in sessions
-                if g in s["groups"]
+                if g in s["groups"] and not s.get("basket_slot")
                 for t in candidates[s["id"]]
                 if data.day_of(t) == day
-            )
-            if isinstance(hours, int):
+            ]
+            # The validator counts a basket once per group/day, not once per
+            # basket option, so model the basket as a single occupant.
+            for bname, options in baskets.items():
+                if len(options) < 2 or not any(g in o["groups"] for o in options):
+                    continue
+                anchor = options[0]["id"]
+                day_vars = [
+                    x[(anchor, t)] for t in candidates[anchor] if data.day_of(t) == day
+                ]
+                if not day_vars:
+                    continue
+                on_day = model.NewBoolVar(f"basket_day[{g},{day},{bname}]")
+                model.AddMaxEquality(on_day, day_vars)
+                hours_terms.append(on_day * basket_duration[bname])
+            if not hours_terms:
                 continue
+            hours = sum(hours_terms)
             over = model.NewIntVar(0, 45, f"over[{g},{day}]")
             model.AddMaxEquality(over, [hours - 6, 0])
             terms.append(over * 3)
@@ -242,7 +257,7 @@ def solve_weekly(
     # S1 (avoid), S5 (low fill), S6 (P9)
     for s in sessions:
         for t in candidates[s["id"]]:
-            if data.period_of(t) == 9:
+            if LAST_TEACHING in data.block(data.period_of(t), s["duration"]):
                 terms.append(x[(s["id"], t)])
         for r in eligible[s["id"]]:
             cap = data.rooms[r]["capacity"]
@@ -254,8 +269,13 @@ def solve_weekly(
             days = pref.get("days", data.days)
             periods = pref.get("periods", [])
             for t in candidates[s["id"]]:
-                if data.day_of(t) in days and any(p in periods for p in data.block(data.period_of(t), s["duration"])):
-                    terms.append(2 * x[(s["id"], t)])
+                if data.day_of(t) in days:
+                    hits = [
+                        p for p in data.block(data.period_of(t), s["duration"])
+                        if p in periods
+                    ]
+                    if hits:
+                        terms.append(2 * len(hits) * x[(s["id"], t)])
 
     # Minimal movement vs a baseline (disruption re-solve)
     same_vars: list = []

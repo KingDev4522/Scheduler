@@ -1,15 +1,12 @@
 /**
  * Client for the FastAPI backend (`backend/app.py`).
- * Set `VITE_API_BASE_URL` for deployment; defaults to localhost:8000.
+ * Leave `VITE_API_BASE_URL` empty for same-origin (Vite dev proxy, or FastAPI
+ * serving the built SPA). Set it only when the API is on a different origin.
  */
 
-const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)
-export const API_BASE =
-  configuredBase !== undefined
-    ? configuredBase.replace(/\/$/, '')
-    : import.meta.env.DEV
-      ? 'http://localhost:8000'
-      : ''
+const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+/** Empty means same origin: the Vite dev proxy in dev, FastAPI in Docker. */
+export const API_BASE = configuredBase ? configuredBase.replace(/\/$/, '') : ''
 
 export interface AuthUser {
   username: string
@@ -108,7 +105,16 @@ export interface OfficialEntities {
   sessions: OfficialSession[]
   booking_requests: OfficialRequest[]
   exams: OfficialExam[]
-  calendar: { days: string[]; periods: { id: number; start: string; end: string }[] }
+  calendar: {
+    days: string[]
+    periods: { id: number; start: string; end: string; teaching?: boolean }[]
+    lunch?: { after_period: number; start: string; end: string }
+    lab_start_periods?: number[]
+    event_only_periods?: number[]
+    /** e.g. "Week 7 (Spectra '27)" — the dataset's only week-specific event label. */
+    fest_week?: string | null
+    exam_week?: { days: string[]; sessions: { id: string; start: string; end: string }[] }
+  }
 }
 
 export interface DatasetInfo {
@@ -120,6 +126,8 @@ export interface DatasetInfo {
   role_category_cap: Record<string, string>
   generated: boolean
   generated_at: string | null
+  /** Derived display calendar (weeks 1–8). Null when the dataset has no dates. */
+  semester: import('./semester').Semester | null
   entities: OfficialEntities
 }
 
@@ -233,6 +241,8 @@ export interface BookingDraft {
   attendance: number | null
   duration_periods: number | null
   windows: BookingWindow[]
+  /** Concrete ISO dates chosen on the calendar (app-level context). */
+  dates?: string[]
   room_types: string[]
   needs: string[]
   requested_room: string | null
@@ -244,6 +254,7 @@ export interface BookingProposalPayload extends BookingDraft {
   requested_category?: string | null
   day?: string | null
   start_period?: number | null
+  room_id?: string | null
   raw_text?: string
 }
 
@@ -263,11 +274,19 @@ export interface BookingValidation {
   category?: string
 }
 
+export interface MissingField {
+  field: string
+  question: string
+  options?: string[]
+}
+
 export interface AssistantParseResult {
   source: string
   model: string
   draft: Partial<BookingDraft> & Record<string, unknown>
   follow_up: string[]
+  /** Every unresolved field, in one pass. */
+  missing?: MissingField[]
 }
 
 export interface AvailabilityEntry {
@@ -283,6 +302,12 @@ export interface ChangeRequestRecord {
   text: string
   draft: Record<string, unknown>
   follow_up: string[]
+  alternatives?: {
+    session_id?: string
+    day: string
+    start_period: number
+    room_id: string
+  }[]
   model: string
   status: 'pending' | 'approved' | 'rejected'
   submitted_at: string
@@ -306,6 +331,9 @@ export interface BookingSubmission extends Record<string, unknown> {
   windows?: BookingWindow[]
   attendance?: number
   duration_periods?: number
+  /** Concrete ISO dates for this request (app-level context). */
+  dates?: string[]
+  weeks?: number[]
 }
 
 async function request<T>(path: string, init: RequestInit = {}, user = 'debjeet'): Promise<T> {
@@ -315,6 +343,11 @@ async function request<T>(path: string, init: RequestInit = {}, user = 'debjeet'
   if (token) headers.set('authorization', `Bearer ${token}`)
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers })
   if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('cit-scheduler:token')
+      localStorage.removeItem('cit-scheduler:session')
+      window.dispatchEvent(new Event('cit-auth-expired'))
+    }
     let detail = `${response.status} ${response.statusText}`
     try {
       const body = await response.json()
@@ -397,19 +430,49 @@ export const api = {
     return request<DisruptionResult>('/api/disruption', { method: 'POST', body: form }, user)
   },
   exportUrl: (name: string) => `${API_BASE}/api/exports/${name}`,
+  downloadExport: async (name: string, user = 'debjeet') => {
+    const headers = new Headers({ 'x-demo-user': user })
+    const token = localStorage.getItem('cit-scheduler:token')
+    if (token) headers.set('authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/api/exports/${name}`, { headers })
+    if (!response.ok) {
+      let detail = `${response.status} ${response.statusText}`
+      try {
+        const body = await response.json()
+        if (typeof body.detail === 'string') detail = body.detail
+      } catch {
+        /* keep status text */
+      }
+      throw new Error(detail)
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = name
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  },
   assistantStatus: (user = 'debjeet') =>
     request<{ configured: boolean; model: string; models?: string[]; fallback?: string }>(
       '/api/assistant/status',
       {},
       user,
     ),
-  assistantParse: (text: string, kind: 'booking' | 'change' = 'booking', user = 'debjeet') =>
+  assistantParse: (
+    text: string,
+    kind: 'booking' | 'change' = 'booking',
+    user = 'debjeet',
+    previousDraft?: Record<string, unknown> | null,
+  ) =>
     request<AssistantParseResult>(
       '/api/assistant/parse',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, kind }),
+        body: JSON.stringify({ text, kind, previous_draft: previousDraft ?? null }),
       },
       user,
     ),

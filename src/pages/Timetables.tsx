@@ -1,10 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { AlertTriangle, CalendarRange, CheckCircle2 } from 'lucide-react'
+import { SOFT_EASE } from '../lib/motion'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState, ErrorState } from '../components/States'
-import { TimetableGrid } from '../components/TimetableGrid'
-import { getData } from '../lib/store'
+import { PageSkeleton } from '../components/Skeletons'
+import { WeekCalendar } from '../components/WeekCalendar'
+import { WeekPicker } from '../components/WeekPicker'
+import { weekDates, weekLabel } from '../lib/semester'
+import { type AppData } from '../lib/store'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
 import {
@@ -28,8 +33,18 @@ function isTimetableView(value: string | null): value is TimetableView {
   return value === 'group' || value === 'faculty' || value === 'room'
 }
 
+const EMPTY_DATA: AppData = {
+  version: 0,
+  rooms: [],
+  faculty: [],
+  groups: [],
+  sessions: [],
+  bookings: [],
+  proposals: [],
+  audit: [],
+}
+
 export default function Timetables() {
-  const [demoData] = useState(getData)
   const { user } = useAuth()
   const official = useOfficial()
   const officialView = useMemo(
@@ -39,9 +54,13 @@ export default function Timetables() {
         : null,
     [official.dataset, official.schedule],
   )
-  const data = officialView?.data ?? demoData
+  const data = officialView?.data ?? EMPTY_DATA
   const usingOfficial = officialView !== null
   const [params, setParams] = useSearchParams()
+
+  if (official.loading && !official.dataset && !official.error) {
+    return <PageSkeleton label="Loading timetables…" variant="calendar" />
+  }
 
   const viewParam = params.get('view')
   const view: TimetableView = isTimetableView(viewParam) ? viewParam : 'group'
@@ -73,6 +92,16 @@ export default function Timetables() {
     const next = new URLSearchParams(params)
     next.set('view', view)
     next.set('id', id)
+    setParams(next, { replace: true })
+  }
+
+  const semester = official.dataset?.semester ?? null
+  const weekParam = params.get('week')
+  const selectedWeek =
+    weekParam && /^\d+$/.test(weekParam) ? Number(weekParam) : semester?.fest_week ?? 1
+  const setWeek = (value: number) => {
+    const next = new URLSearchParams(params)
+    next.set('week', String(value))
     setParams(next, { replace: true })
   }
 
@@ -115,23 +144,36 @@ export default function Timetables() {
   const viewConflicts = conflictsForView(data, view, selectedId)
 
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="Timetables"
         subtitle={
           usingOfficial
             ? 'Published solver output from the FastAPI backend, adapted into group, faculty and room views.'
-            : 'Monday–Friday, P1–P9 with a lunch divider and the event-only P10–P13 band. Demo data — generate a schedule in Official Data to replace it.'
+            : 'Generate the official schedule in Import / Exports to populate the weekly grid.'
         }
       />
 
-      <p className="mb-4 text-xs text-slate-500">
-        {usingOfficial ? 'Official schedule' : 'Demo data'} · {data.sessions.length} sessions ·{' '}
+      <p className="mb-4 text-sm font-medium text-black">
+        {usingOfficial ? 'Official schedule' : 'No official schedule'} · {data.sessions.length} sessions ·{' '}
         {data.groups.length} groups · {data.faculty.length} faculty · {data.rooms.length} rooms
       </p>
 
+      {semester && (
+        <div className="mb-4">
+          <WeekPicker
+            semester={semester}
+            week={selectedWeek}
+            onChange={setWeek}
+            view="week"
+            onViewChange={() => {}}
+            showViewToggle={false}
+          />
+        </div>
+      )}
+
       {/* View switching */}
-      <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="cit-card mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <span className="mb-1 block text-xs font-medium text-slate-600">View by</span>
@@ -142,13 +184,18 @@ export default function Timetables() {
                   type="button"
                   onClick={() => setView(option.id)}
                   aria-pressed={view === option.id}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    view === option.id
-                      ? 'bg-white text-neutral-800 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
+                  className={`relative rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    view === option.id ? 'text-neutral-800' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
-                  {option.label}
+                  {view === option.id && (
+                    <motion.span
+                      layoutId="timetable-view-pill"
+                      className="absolute inset-0 rounded-md bg-white shadow-sm"
+                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                    />
+                  )}
+                  <span className="relative z-10">{option.label}</span>
                 </button>
               ))}
             </div>
@@ -187,33 +234,62 @@ export default function Timetables() {
             const load = sessions
               .filter((session) => session.day === day)
               .reduce((sum, session) => sum + session.periods, 0)
-            const heavy = view === 'group' && load > 6
+            const facultyLimit = view === 'faculty' ? facultyById(data, selectedId)?.dailyLimit ?? 4 : null
+            const heavy = view === 'group' ? load > 6 : facultyLimit !== null ? load > facultyLimit : false
+            const label = facultyLimit !== null ? `${load}/${facultyLimit}h` : `${load}p`
             return (
               <span
                 key={day}
                 className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
                   heavy ? 'bg-neutral-200 text-neutral-800' : 'bg-slate-100 text-slate-600'
                 }`}
-                title={heavy ? 'Group exceeds 6 class hours on this day (soft constraint S03).' : undefined}
+                title={
+                  view === 'group'
+                    ? load > 6
+                      ? 'Group exceeds 6 class hours on this day (soft constraint S03).'
+                      : undefined
+                    : facultyLimit !== null
+                      ? `Faculty daily teaching limit ${facultyLimit}h (hard constraint H12).`
+                      : undefined
+                }
               >
-                {day} {load}p{heavy ? ' ⚠' : ''}
+                {day} {label}
+                {heavy ? ' ⚠' : ''}
               </span>
             )
           })}
         </div>
       </section>
 
-      {sessions.length === 0 ? (
-        <EmptyState
-          icon={CalendarRange}
-          title={`No sessions for ${label ?? 'this selection'}`}
-          description="This demo dataset has no teaching sessions for the selected view. Choose another group, faculty member or room."
-        />
-      ) : (
-        <TimetableGrid data={data} sessions={sessions} view={view} />
-      )}
+      <motion.div
+        key={`${view}-${selectedId}`}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: SOFT_EASE }}
+      >
+        {sessions.length === 0 ? (
+          <EmptyState
+            icon={CalendarRange}
+            title={`No sessions for ${label ?? 'this selection'}`}
+            description="This timetable has no teaching sessions for the selected view. Choose another group, faculty member or room."
+          />
+        ) : (
+          <WeekCalendar
+            sessions={sessions}
+            rooms={data.rooms}
+            faculty={data.faculty}
+            groups={data.groups}
+            title={label ? `${label} · study timetable` : 'Study timetable'}
+            subtitle={`Classes only · ${
+              semester ? weekLabel(semester, selectedWeek) : 'Mon–Fri'
+            } · P1 08:00–P9 17:00 · lunch 13:00–14:00`}
+            badge="Study view"
+            weekDates={semester ? weekDates(semester, selectedWeek) : []}
+          />
+        )}
+      </motion.div>
 
-      {/* Legend */}        <section className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      {/* Legend */}        <section className="cit-card mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-neutral-900">Legend</h3>
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-neutral-600">
           <span className="inline-flex items-center gap-1.5">
@@ -242,7 +318,7 @@ export default function Timetables() {
       </section>
 
       {/* Deterministic checks for this view */}
-      <section className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <section className="cit-card mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
           {viewConflicts.length === 0 ? (
             <CheckCircle2 className="h-4 w-4 text-neutral-600" aria-hidden />
@@ -251,10 +327,13 @@ export default function Timetables() {
           )}
           Checks for this view
         </h3>
+        <p className="mt-1.5 text-xs text-neutral-500">
+          In-browser checks (not the official validator).
+        </p>
         {viewConflicts.length === 0 ? (
           <p className="mt-1.5 text-sm text-neutral-500">
             No room, faculty, group, capacity or timing issues detected for {label ?? 'this view'} in
-            the demo data.
+            the in-browser checks.
           </p>
         ) : (
           <ul className="mt-2 space-y-2">

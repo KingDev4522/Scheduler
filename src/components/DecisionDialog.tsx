@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, CheckCircle2, XCircle, X } from 'lucide-react'
+import { SOFT_EASE } from '../lib/motion'
 
 export type Decision = 'approved' | 'rejected'
 
@@ -37,8 +39,6 @@ export function DecisionDialog({
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  if (!open) return null
-
   const submit = (decision: Decision) => {
     const trimmed = reason.trim()
     if (trimmed.length < 3) {
@@ -49,18 +49,29 @@ export function DecisionDialog({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 sm:items-center sm:p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="decision-title"
-        className="max-h-full w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
-      >
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="decision-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.24, ease: SOFT_EASE }}
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) onClose()
+          }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="decision-title"
+            initial={{ opacity: 0, y: 28, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.985 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 28, mass: 0.9 }}
+            className="max-h-full w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+          >
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 id="decision-title" className="text-base font-semibold text-slate-900">
@@ -144,7 +155,9 @@ export function DecisionDialog({
             Approve
           </button>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

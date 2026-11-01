@@ -81,7 +81,7 @@ def test_gemini_tries_next_model_on_503(monkeypatch) -> None:
     monkeypatch.setattr(assistant.httpx, "post", fake_post)
     monkeypatch.setattr(assistant.time, "sleep", lambda _seconds: None)
 
-    assert assistant._call_gemini("prompt", "system") == {"title": "ok"}
+    assert assistant._call_gemini("prompt", "system") == ({"title": "ok"}, "model-b")
     assert any("/model-b" in url for url in calls)
 
 
@@ -106,7 +106,10 @@ def test_vague_request_produces_clarification(data: Data, monkeypatch) -> None:
     parsed = assistant.parse_booking_request(data, "Need a room sometime next week")
     assert parsed.follow_up
     assert any("attend" in item.lower() for item in parsed.follow_up)
-    assert any("venue" in item.lower() or "room type" in item.lower() for item in parsed.follow_up)
+    assert any(
+        "day" in item.lower() or "window" in item.lower() or "when" in item.lower()
+        for item in parsed.follow_up
+    )
 
 
 def test_hinglish_request_is_parsed_locally(data: Data, monkeypatch) -> None:
@@ -122,6 +125,206 @@ def test_hinglish_request_is_parsed_locally(data: Data, monkeypatch) -> None:
     assert parsed.draft["windows"] == [
         {"day": "TUE", "from_period": 10, "to_period": 11}
     ]
+
+
+def test_all_missing_fields_are_reported_together(data: Data) -> None:
+    parsed = assistant._normalise_booking(data, {"title": "Vague request"})
+    fields = {item["field"] for item in parsed.missing}
+    # Attendance, time and venue type are all missing and reported in one pass.
+    assert {"attendance", "time", "room_types"}.issubset(fields)
+    assert len(parsed.missing) >= 3
+    assert len(parsed.follow_up) >= 3
+
+
+def test_dates_are_kept_and_bad_dates_flagged(data: Data, monkeypatch) -> None:
+    from datetime import date
+
+    monkeypatch.setenv("SEMESTER_START_DATE", "2026-11-02")
+    parsed = assistant._normalise_booking(
+        data,
+        {
+            "title": "Club meet",
+            "attendance": 30,
+            "duration_periods": 2,
+            "windows": [{"day": "WED", "from_period": 10, "to_period": 11}],
+            "room_types": ["seminar_hall"],
+            "dates": ["2026-12-15", "2026-10-01", "2026-12-22", "2026-12-19"],
+        },
+        today=date(2026, 11, 1),
+    )
+    # Good Week-7 date kept; past, exam-week and weekend dates flagged and dropped.
+    assert parsed.draft["dates"] == ["2026-12-15"]
+    questions = " ".join(item["question"] for item in parsed.missing)
+    assert "past" in questions
+    assert "exam week" in questions
+    assert "weekend" in questions
+
+
+def test_follow_up_answer_merges_with_previous(data: Data) -> None:
+    from datetime import date
+
+    first = assistant._normalise_booking(
+        data,
+        {
+            "title": "Club meet",
+            "attendance": 40,
+            "duration_periods": 2,
+            "windows": [{"day": "TUE", "from_period": 10, "to_period": 11}],
+            "dates": ["2026-12-15"],
+            "room_types": ["seminar_hall"],
+        },
+        today=date(2026, 11, 1),
+    )
+    # A bare answer sets only the head count; every other field is carried forward.
+    second = assistant._normalise_booking(
+        data, {"attendance": 50}, previous=first.draft, today=date(2026, 11, 1)
+    )
+    assert second.draft["attendance"] == 50
+    assert second.draft["room_types"] == ["seminar_hall"]
+    assert second.draft["windows"] == [{"day": "TUE", "from_period": 10, "to_period": 11}]
+    assert second.draft["dates"] == ["2026-12-15"]
+    assert second.draft["title"] == "Club meet"
+    assert second.missing == []
+
+    # An explicit new value in the latest turn overrides the carried-forward one.
+    third = assistant._normalise_booking(
+        data, {"room_types": ["auditorium"]}, previous=second.draft, today=date(2026, 11, 1)
+    )
+    assert third.draft["room_types"] == ["auditorium"]
+    assert third.draft["attendance"] == 50
+
+
+def test_attendance_regex_fallback_when_model_drops_it(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {
+            "title": "Farewell",
+            "room_types": ["auditorium"],
+            "duration_periods": 4,
+            "windows": [{"day": "FRI", "from_period": 10, "to_period": 13}],
+        },
+        text="Book the auditorium for the CSE department farewell Friday evening, around 400 people",
+    )
+    assert parsed.draft["attendance"] == 400
+    assert parsed.missing == []
+
+
+def test_named_room_implies_room_type(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {
+            "title": "Poster session",
+            "attendance": 60,
+            "requested_room": "SH-2",
+            "needs": ["accessible"],
+            "windows": [{"day": "FRI", "from_period": 3, "to_period": 3}],
+        },
+        text="I want SH-2 on Friday at 10 am for a wheelchair-accessible poster session, 60 people",
+    )
+    assert parsed.draft["room_types"] == [data.rooms["SH-2"]["type"]]
+
+
+def test_local_instead_replaces_room_type(data: Data) -> None:
+    raw = assistant._local_booking_draft(data, "seminar hall\nactually the auditorium instead")
+    assert raw["room_types"] == ["auditorium"]
+
+
+def test_clock_range_is_not_mistaken_for_a_date() -> None:
+    assert assistant._local_dates("seminar hall, 15 December 6 to 8 pm") == ["2026-12-15"]
+
+
+def test_local_title_uses_the_first_transcript_line() -> None:
+    assert assistant._local_title("Need a room for the club event\n50 people") == (
+        "Need a room for the club event"
+    )
+
+
+def test_title_is_not_replaced_by_a_bare_answer(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {"title": "50 people", "attendance": 50},
+        previous={"title": "Club Event"},
+        text="50 people",
+    )
+    assert parsed.draft["title"] == "Club Event"
+
+
+def test_local_fallback_reads_month_date_and_merges(data: Data) -> None:
+    from datetime import date
+
+    first = assistant._normalise_booking(
+        data,
+        assistant._local_booking_draft(data, "club event for 50 people"),
+        "local-rules",
+        text="club event for 50 people",
+        today=date(2026, 11, 1),
+    )
+    second = assistant._normalise_booking(
+        data,
+        assistant._local_booking_draft(data, "seminar hall, 15 December 6 to 8 pm"),
+        "local-rules",
+        previous=first.draft,
+        text="seminar hall, 15 December 6 to 8 pm",
+        today=date(2026, 11, 1),
+    )
+    assert second.draft["attendance"] == 50  # carried from the first turn
+    assert second.draft["title"] == "Club event for 50 people"
+    assert second.draft["room_types"] == ["seminar_hall"]
+    assert second.draft["dates"] == ["2026-12-15"]
+    assert second.draft["windows"] == [{"day": "TUE", "from_period": 10, "to_period": 11}]
+
+
+def test_window_width_is_not_used_as_duration(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {
+            "title": "Quiz finals",
+            "room_types": ["lecture_hall"],
+            "attendance": 150,
+            "windows": [{"day": "THU", "from_period": 6, "to_period": 13}],
+        },
+        text="Need somewhere for the quiz finals after lunch on Thursday, maybe 150 people",
+    )
+    # "after lunch" is an allowed P6-P13 window; the duration is unknown, so ask.
+    assert parsed.draft["duration_periods"] is None
+    assert any(item["field"] == "time" for item in parsed.missing)
+
+
+def test_generic_room_word_implies_room_type(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {"title": "Club meet", "attendance": 45, "windows": [{"day": "TUE", "from_period": 10, "to_period": 11}]},
+        text="Need a room for 45 people on Tuesday 6 to 8 pm, projector please.",
+    )
+    assert parsed.draft["room_types"] == ["classroom", "lecture_hall", "seminar_hall"]
+
+
+def test_duration_regex_fallback(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {"title": "Coding contest", "room_types": ["lab_cs"], "attendance": 60},
+        text="lab with computers for a 3-hour coding contest on Thursday afternoon",
+    )
+    assert parsed.draft["duration_periods"] == 3
+
+
+def test_parse_merges_previous_context(data: Data, monkeypatch) -> None:
+    def fake_call(prompt: str, system: str):
+        return {"attendance": 50}, "model-x"
+
+    monkeypatch.setattr(assistant, "_call_gemini", fake_call)
+    previous = {
+        "title": "Club meet",
+        "room_types": ["seminar_hall"],
+        "windows": [{"day": "TUE", "from_period": 10, "to_period": 11}],
+        "dates": ["2026-12-15"],
+        "duration_periods": 2,
+    }
+    parsed = assistant.parse_booking_request(data, "50 people", previous=previous)
+    assert parsed.draft["attendance"] == 50
+    assert parsed.draft["room_types"] == ["seminar_hall"]
+    assert parsed.draft["windows"] == [{"day": "TUE", "from_period": 10, "to_period": 11}]
+    assert "Club meet" in assistant._known_block(previous)
 
 
 def test_prompt_injection_cannot_add_privileged_fields(data: Data, monkeypatch) -> None:

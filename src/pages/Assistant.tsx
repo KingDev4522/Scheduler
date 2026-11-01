@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Sparkles } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
-import { EmptyState, ErrorState, LoadingState, StatusNotice } from '../components/States'
+import { EmptyState, ErrorState, StatusNotice } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
 import { BookingDraftForm, type BookingFormOptions } from '../components/BookingDraftForm'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
@@ -12,7 +13,9 @@ import {
   type BookingDraft,
   type BookingWindow,
   type BookingValidation,
+  type MissingField,
 } from '../lib/api'
+import { datasetDay } from '../lib/semester'
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
@@ -33,6 +36,7 @@ function toDraft(parsed: AssistantParseResult): BookingDraft {
     attendance: typeof raw.attendance === 'number' ? raw.attendance : null,
     duration_periods: typeof raw.duration_periods === 'number' ? raw.duration_periods : null,
     windows,
+    dates: asStringArray(raw.dates),
     room_types: asStringArray(raw.room_types),
     needs: asStringArray(raw.needs),
     requested_room: typeof raw.requested_room === 'string' ? raw.requested_room : null,
@@ -47,10 +51,33 @@ export default function Assistant() {
   const [parsed, setParsed] = useState<AssistantParseResult | null>(null)
   const [draft, setDraft] = useState<BookingDraft | null>(null)
   const [followUp, setFollowUp] = useState<string[]>([])
+  const [missing, setMissing] = useState<MissingField[]>([])
   const [validation, setValidation] = useState<BookingValidation | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [slot, setSlot] = useState<{ room_id: string; day: string; start_period: number } | null>(null)
+  const [clarification, setClarification] = useState('')
+  const [modelInfo, setModelInfo] = useState<{
+    configured: boolean
+    model: string
+    models?: string[]
+    fallback?: string
+  } | null>(null)
+
+  useEffect(() => {
+    if (!user) return undefined
+    let active = true
+    api
+      .assistantStatus(user.username)
+      .then((value) => {
+        if (active) setModelInfo(value)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [user])
 
   useEffect(() => {
     const raw = sessionStorage.getItem('cit-assistant-draft')
@@ -63,6 +90,7 @@ export default function Assistant() {
         setParsed(stored.parsed)
         setDraft(toDraft(stored.parsed))
         setFollowUp(stored.parsed.follow_up ?? [])
+        setMissing(stored.parsed.missing ?? [])
       }
     } catch {
       /* ignore malformed handoff */
@@ -78,13 +106,16 @@ export default function Assistant() {
       needs: Array.from(new Set(rooms.flatMap((room) => room.features))).concat('accessible').sort(),
       groups: official.dataset.entities.student_groups.map((group) => group.id),
       rooms: rooms.map((room) => ({ id: room.id, name: room.name })),
+      semester: official.dataset.semester ?? null,
     }
   }, [official.dataset])
 
   if (!user) return null
 
-  const parse = async () => {
-    if (text.trim().length < 5) {
+  // The current draft is sent as context so a follow-up answer merges into it
+  // instead of replacing everything the assistant already understood.
+  const parse = async (input: string = text, previous: BookingDraft | null = draft) => {
+    if (input.trim().length < 5) {
       setError('Describe the request in at least a few words.')
       return
     }
@@ -92,14 +123,22 @@ export default function Assistant() {
     setError(null)
     setFlash(null)
     setValidation(null)
+    setSlot(null)
     try {
-      const result = await api.assistantParse(text, 'booking', user.username)
+      const result = await api.assistantParse(
+        input,
+        'booking',
+        user.username,
+        previous as Record<string, unknown> | null,
+      )
       setParsed(result)
       setDraft(toDraft(result))
       setFollowUp(result.follow_up)
+      setMissing(result.missing ?? [])
     } catch (caught) {
       setParsed(null)
       setDraft(null)
+      setMissing([])
       setError(
         `${caught instanceof Error ? caught.message : 'The assistant is unavailable.'} You can still use the manual form.`,
       )
@@ -111,8 +150,14 @@ export default function Assistant() {
   const validate = async () => {
     if (!draft) return
     setBusy(true)
+    setError(null)
     try {
-      setValidation(await api.validateBooking({ ...draft, raw_text: text }, user.username))
+      setValidation(
+        await api.validateBooking(
+          { ...draft, ...(slot ?? {}), raw_text: text },
+          user.username,
+        ),
+      )
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Validation failed.')
     } finally {
@@ -123,8 +168,12 @@ export default function Assistant() {
   const submit = async () => {
     if (!draft) return
     setBusy(true)
+    setError(null)
     try {
-      const result = await api.submitBooking({ ...draft, raw_text: text }, user.username)
+      const result = await api.submitBooking(
+        { ...draft, ...(slot ?? {}), raw_text: text },
+        user.username,
+      )
       setFlash({
         tone: 'success',
         message: `${result.request.id} submitted for approval.`,
@@ -132,6 +181,9 @@ export default function Assistant() {
       setDraft(null)
       setParsed(null)
       setValidation(null)
+      setSlot(null)
+      setMissing([])
+      setFollowUp([])
       setText('')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Submission failed.')
@@ -140,13 +192,46 @@ export default function Assistant() {
     }
   }
 
+  const chooseAlternative = async (alternative: BookingValidation['alternatives'][number]) => {
+    if (!draft) return
+    const nextDraft = {
+      ...draft,
+      requested_room: alternative.room_id,
+      dates: (draft.dates ?? []).filter((iso) => datasetDay(iso) === alternative.day),
+      duration_periods: alternative.end_period - alternative.start_period + 1,
+      windows: [
+        {
+          day: alternative.day,
+          from_period: alternative.start_period,
+          to_period: alternative.end_period,
+        },
+      ],
+    }
+    const nextSlot = {
+      room_id: alternative.room_id,
+      day: alternative.day,
+      start_period: alternative.start_period,
+    }
+    setDraft(nextDraft)
+    setSlot(nextSlot)
+    setBusy(true)
+    setError(null)
+    try {
+      setValidation(
+        await api.validateBooking(
+          { ...nextDraft, ...nextSlot, raw_text: text },
+          user.username,
+        ),
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Validation failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   if (official.loading && !official.dataset) {
-    return (
-      <div>
-        <PageHeader title="AI Assistant" subtitle="Natural-language intake with deterministic validation." />
-        <LoadingState label="Loading the official dataset…" />
-      </div>
-    )
+    return <PageSkeleton label="Loading the official dataset…" variant="form" rows={4} />
   }
 
   if (!official.dataset || !options) {
@@ -163,7 +248,7 @@ export default function Assistant() {
   }
 
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="AI Assistant"
         subtitle="Describe a request in English or Hinglish. Gemini extracts a draft; the deterministic validator decides what is possible."
@@ -172,13 +257,17 @@ export default function Assistant() {
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
       {error && <StatusNotice tone="error">{error}</StatusNotice>}
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
+      <section className="cit-card rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
             <Sparkles className="h-4 w-4" aria-hidden /> Describe your request
           </h3>
           <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600">
-            gemini-3.6-flash · extraction only
+            {modelInfo
+              ? modelInfo.configured
+                ? `${modelInfo.model} · extraction only`
+                : 'local-rules fallback · extraction only'
+              : 'checking model…'}
           </span>
         </div>
         <label htmlFor="assistant-text" className="mt-3 block text-xs font-medium text-neutral-600">
@@ -199,7 +288,7 @@ export default function Assistant() {
             disabled={busy}
             className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {busy ? 'Interpreting…' : 'Interpret request'}
+            {busy ? 'Interpreting…' : draft ? 'Refine draft' : 'Interpret request'}
           </button>
           <Link
             to="/manual"
@@ -207,25 +296,87 @@ export default function Assistant() {
           >
             Use the manual form
           </Link>
+          {(draft || text) && (
+            <button
+              type="button"
+              onClick={() => {
+                setText('')
+                setDraft(null)
+                setParsed(null)
+                setMissing([])
+                setFollowUp([])
+                setValidation(null)
+                setSlot(null)
+                setClarification('')
+                setFlash(null)
+                setError(null)
+              }}
+              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            >
+              Start over
+            </button>
+          )}
           <span className="text-[11px] text-neutral-500">
             The assistant never approves or validates. You review every field.
           </span>
         </div>
       </section>
 
-      {followUp.length > 0 && (
-        <section className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-semibold text-amber-900">Please clarify</p>
-          <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-800">
-            {followUp.map((question) => (
-              <li key={question}>{question}</li>
-            ))}
-          </ul>
+      {(missing.length > 0 || followUp.length > 0) && (
+        <section className="cit-anim-pop mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold text-amber-900">
+            {missing.length > 0
+              ? `Fill these ${missing.length} item${missing.length === 1 ? '' : 's'} — all at once`
+              : 'Please clarify'}
+          </p>
+          {missing.length > 0 ? (
+            <ul className="mt-1 space-y-1 text-xs text-amber-800">
+              {missing.map((item) => (
+                <li key={`${item.field}-${item.question}`} className="flex flex-wrap items-baseline gap-1.5">
+                  <span className="rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                    {item.field.replace(/_/g, ' ')}
+                  </span>
+                  <span>{item.question}</span>
+                  {item.options && item.options.length > 0 && (
+                    <span className="text-amber-700/80">({item.options.slice(0, 6).join(', ')})</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-800">
+              {followUp.map((question) => (
+                <li key={question}>{question}</li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            <input
+              value={clarification}
+              onChange={(event) => setClarification(event.target.value)}
+              placeholder="Answer the question or add the missing detail"
+              className="min-w-[14rem] flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const next = `${text}\n${clarification}`.trim()
+                if (next.length < 5) return
+                setText(next)
+                setClarification('')
+                void parse(next, draft)
+              }}
+              disabled={busy || clarification.trim().length === 0}
+              className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Apply clarification
+            </button>
+          </div>
         </section>
       )}
 
       {draft && options ? (
-        <section className="mt-4 rounded-xl border border-neutral-200 bg-white p-5">
+        <section className="cit-anim-pop mt-4 rounded-xl border border-neutral-200 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-neutral-900">Editable draft</h3>
             <span className="text-[11px] text-neutral-500">
@@ -238,6 +389,7 @@ export default function Assistant() {
               options={options}
               onChange={(next) => {
                 setDraft(next)
+                setSlot(null)
                 setValidation(null)
               }}
             />
@@ -262,7 +414,7 @@ export default function Assistant() {
           </div>
 
           {validation && (
-            <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs">
+            <div className="cit-anim-pop mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs">
               {validation.violations.map((violation) => (
                 <p key={violation} className="text-rose-700">
                   • {violation}
@@ -272,19 +424,7 @@ export default function Assistant() {
                 <button
                   key={`${alternative.room_id}-${alternative.day}-${alternative.start_period}`}
                   type="button"
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      requested_room: alternative.room_id,
-                      windows: [
-                        {
-                          day: alternative.day,
-                          from_period: alternative.start_period,
-                          to_period: alternative.end_period,
-                        },
-                      ],
-                    })
-                  }
+                  onClick={() => void chooseAlternative(alternative)}
                   className="mr-2 mt-1 rounded border border-neutral-200 bg-white px-2 py-1 text-left text-neutral-700"
                 >
                   Use {alternative.room_id} · {alternative.day} P{alternative.start_period}

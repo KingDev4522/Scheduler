@@ -18,8 +18,9 @@ import './landing/landing.css'
 
 gsap.registerPlugin(ScrollTrigger)
 
-// Exact extraction of the original landing page (SignSpeak marketing site).
-// Sections, order, copy, assets and motion are identical.
+// Marketing landing page for CIT Scheduler, the campus scheduling platform
+// built for Chilika Institute of Technology (CIT). Sections, order and motion
+// follow the original editorial layout.
 export default function App() {
   const { pathname } = useLocation()
   const [ready, setReady] = useState(false)

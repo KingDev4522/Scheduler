@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import FlowArt, { FlowSection } from './ui/story-scroll.jsx';
 
 /*
- * FLOW BEATS - "One flow. Three beats."
+ * FLOW BEATS - "One pipeline. Three beats."
  * Story-scroll manner: full-screen panels pin and swing in over each other.
  * Full-bleed saturated colorways, one per beat:
  * crimson → electric → aqua → deep crimson.
@@ -34,14 +34,14 @@ const SERIF = 'font-serif-aesthetic font-normal normal-case italic tracking-[-0.
 export default function FlowBeats() {
   return (
     // id="pipeline" restores the nav anchor (the parked Pipeline section's
-    // "One flow. Three beats." content lives here now).
+    // "One pipeline. Three beats." content lives here now).
     <div id="pipeline" className="relative">
-    <FlowArt aria-label="How SignSpeak flows">
+    <FlowArt aria-label="How the CIT Scheduler pipeline runs">
       {/* 00 - Intro on crimson */}
-      <FlowSection aria-label="One flow, three beats" style={{ backgroundColor: '#C5003C', color: '#FFF8F0' }}>
+      <FlowSection aria-label="One pipeline, three beats" style={{ backgroundColor: '#C5003C', color: '#FFF8F0' }}>
         <div>
           <h2 className={`${DISPLAY} text-center`}>
-            One flow.
+            One pipeline.
             <br />
             <span className={`${SERIF} text-black`}>Three beats.</span>
           </h2>
@@ -49,73 +49,77 @@ export default function FlowBeats() {
         <div>
           <hr className="mb-[2vw] border-none border-t border-white/50" />
           <Body>
-            Camera to understanding to speech: three movements, one continuous
-            motion. Nothing leaves your device.
+            Import to timetable to export: one continuous run. Chilika
+            Institute of Technology's week is checked by the same hard rules the
+            official validator enforces.
           </Body>
-          <Meta items={['Camera', 'Templates', 'Grammar', 'Voice']} />
+          <Meta items={['Import', 'Solve', 'Validate', 'Export']} />
         </div>
       </FlowSection>
 
-      {/* 01 - Segment & Track on electric */}
-      <FlowSection aria-label="Beat one: segment and track" style={{ backgroundColor: '#F3E600', color: '#000000' }}>
+      {/* 01 - Read the data on electric */}
+      <FlowSection aria-label="Beat one: read the data" style={{ backgroundColor: '#F3E600', color: '#000000' }}>
         <div>
           <h2 className={`${DISPLAY} text-black`}>
             Read
             <br />
-            <span className={`${SERIF} text-deep-crimson`}>the hand.</span>
+            <span className={`${SERIF} text-deep-crimson`}>the data.</span>
           </h2>
         </div>
         <div>
           <hr className="mb-[2vw] border-none border-t border-black/50" />
           <Body dark>
-            Motion segmentation splits continuous signing into discrete gestures.
-            21 landmarks per frame, 60 frames per second.
+            The official cit_public.json is parsed and counted: 27 rooms, 40
+            faculty, 14 student groups, 189 sessions, 41 exams and 25 Spectra
+            requests.
           </Body>
-          <Meta dark items={['MediaPipe', 'WASM', '21 landmarks']} />
+          <Meta dark items={['cit_public.json', '189 sessions', '7 counts']} />
         </div>
       </FlowSection>
 
-      {/* 02 - Match & Grammar on aqua */}
-      <FlowSection aria-label="Beat two: match and grammar" style={{ backgroundColor: '#55EAD4', color: '#000000' }}>
+      {/* 02 - Solve the week on aqua */}
+      <FlowSection aria-label="Beat two: solve the week" style={{ backgroundColor: '#55EAD4', color: '#000000' }}>
         <div>
           <h2 className={`${DISPLAY} text-black`}>
-            Match
+            Solve
             <br />
-            <span className={`${SERIF} text-deep-crimson`}>the sign.</span>
+            <span className={`${SERIF} text-deep-crimson`}>the week.</span>
           </h2>
         </div>
         <div>
           <hr className="mb-[2vw] border-none border-t border-black/50" />
           <Body dark>
-            Dynamic time warping matches trajectories against your local templates.
-            FLAN-T5 turns gloss into grammatical English.
+            OR-Tools CP-SAT places every session exactly once, respects lunch,
+            lab start periods and faculty limits, then seats 41 midsem exams at
+            half room capacity.
           </Body>
-          <Meta dark items={['DTW 0.36', 'FLAN-T5', 'IndexedDB']} />
+          <Meta dark items={['CP-SAT', '0 hard violations', 'Soft penalty 3']} />
         </div>
       </FlowSection>
 
-      {/* 03 - Speak on deep crimson */}
-      <FlowSection aria-label="Beat three: speak" style={{ backgroundColor: '#880425', color: '#FFF8F0' }}>
+      {/* 03 - Explain the call on deep crimson */}
+      <FlowSection aria-label="Beat three: explain the call" style={{ backgroundColor: '#880425', color: '#FFF8F0' }}>
         <div>
           <h2 className={DISPLAY}>
-            Speak
+            Explain
             <br />
-            <span className={`${SERIF} text-electric`}>it aloud.</span>
+            <span className={`${SERIF} text-electric`}>the call.</span>
           </h2>
         </div>
         <div>
           <hr className="mb-[2vw] border-none border-t border-white/50" />
           <Body>
-            Neural voice broadcast the instant the sign completes. No queue,
-            no round-trip. Raise your hand.
+            Every approval, rejection and repair carries a reason: priority
+            order, room capacity, department ownership and exactly how many
+            sessions moved. Nothing changes without a signature.
           </Body>
           <div className="mt-[2vw] flex flex-wrap items-center gap-x-8 gap-y-2">
-            <Meta items={['Whisper', 'WebAudio', '0 bytes out']} />
+            <Meta items={['Reasons', 'Diff preview', 'Audit trail']} />
             <Link
-              to="/interpret"
+              to="/login"
               className="group font-mono-tech text-[10.5px] uppercase tracking-[0.2em] text-white"
             >
-              Open the studio
+              Open the scheduler
               <span aria-hidden="true" className="ml-2 inline-block text-electric transition-transform duration-300 group-hover:-translate-y-px group-hover:translate-x-px">↗</span>
             </Link>
           </div>

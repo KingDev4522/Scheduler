@@ -20,9 +20,9 @@ export default {
         aqua: "#55ead4",
       },
       fontFamily: {
-        display: ['"Space Grotesk"', '"Inter Tight"', "system-ui", "sans-serif"],
-        "serif-aesthetic": ['"Cormorant Garamond"', "Georgia", "serif"],
-        "mono-tech": ['"JetBrains Mono"', "ui-monospace", '"SF Mono"', "monospace"],
+        display: ['"Bricolage Grotesque"', '"Instrument Sans"', "system-ui", "sans-serif"],
+        "serif-aesthetic": ['"Instrument Serif"', "Georgia", "serif"],
+        "mono-tech": ['"IBM Plex Mono"', "ui-monospace", '"SF Mono"', "monospace"],
       },
     },
   },

@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
+
+os.environ.setdefault("DATABASE_PATH", str(Path(tempfile.gettempdir()) / "cit_scheduler_phase4_state.sqlite3"))
+os.environ.setdefault("ALLOW_DEMO_HEADER", "1")
 
 from fastapi.testclient import TestClient
 

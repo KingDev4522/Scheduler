@@ -1,461 +1,394 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  GitCompareArrows,
-  Loader2,
-  Send,
-  Wrench,
-} from 'lucide-react'
+import { AlertTriangle, CheckCircle2, GitCompareArrows, Loader2, Upload, Wrench } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState, StatusNotice } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
 import { useAuth } from '../lib/auth'
-import {
-  getData,
-  submitProposal,
-  type AppData,
-  type DisruptionSpec,
-  type DisruptionType,
-} from '../lib/store'
-import { DAYS, periodRangeLabel, type Day } from '../lib/time'
-import { planDisruption, type DisruptionPlan } from '../engine/disruption'
-import { repairTimetable } from '../engine/solver'
-import type { RepairResult } from '../engine/types'
+import { useOfficial } from '../hooks/useOfficial'
 
-const STATUS_STYLE: Record<RepairResult['status'], string> = {
-  FEASIBLE: 'bg-neutral-100 text-neutral-800',
-  INFEASIBLE: 'bg-neutral-100 text-neutral-800',
-  TIMEOUT: 'bg-neutral-100 text-neutral-800',
-}
-
-function timeAgo(ts: number): string {
-  const mins = Math.floor((Date.now() - ts) / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
-}
+type ChangeType = 'faculty_leave' | 'room_closure'
 
 export default function Changes() {
   const { user } = useAuth()
-  const [data, setData] = useState<AppData>(getData)
-  const [disruptionType, setDisruptionType] = useState<DisruptionType>('faculty_leave')
-  const [day, setDay] = useState<Day>('Mon')
-  const [facultyId, setFacultyId] = useState(data.faculty[0]?.id ?? '')
-  const [roomId, setRoomId] = useState(data.rooms[0]?.id ?? '')
-  const [busy, setBusy] = useState(false)
-  const [plan, setPlan] = useState<DisruptionPlan | null>(null)
-  const [builtSpec, setBuiltSpec] = useState<DisruptionSpec | null>(null)
-  const [repair, setRepair] = useState<RepairResult | null>(null)
+  const official = useOfficial()
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [type, setType] = useState<ChangeType>('faculty_leave')
+  const [facultyId, setFacultyId] = useState('')
+  const [roomId, setRoomId] = useState('')
+  const [day, setDay] = useState('MON')
+  const [periods, setPeriods] = useState<number[]>([1, 2, 3, 4, 5, 6, 7, 8, 9])
+  const [reason, setReason] = useState('')
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
 
-  const sessionById = useMemo(
-    () => new Map(data.sessions.map((session) => [session.id, session])),
-    [data.sessions],
-  )
-  const roomName = (id: string) => data.rooms.find((room) => room.id === id)?.name ?? id
-  const facultyName = (id: string) => data.faculty.find((member) => member.id === id)?.name ?? id
+  const dataset = official.dataset
+  const days = dataset?.entities.calendar.days ?? ['MON', 'TUE', 'WED', 'THU', 'FRI']
+  const faculty = dataset?.entities.faculty ?? []
+  const rooms = dataset?.entities.rooms ?? []
+  const activeFaculty = facultyId || faculty[0]?.id || ''
+  const activeRoom = roomId || rooms[0]?.id || ''
 
-  if (!user) return null
+  const diff = official.schedule?.diff ?? official.disruptionResult?.diff ?? null
+  const proposalStatus = official.schedule?.proposal_status ?? null
 
-  const makeSpec = (): DisruptionSpec => {
-    if (disruptionType === 'faculty_leave') {
+  const changePayload = useMemo(() => {
+    if (type === 'faculty_leave') {
       return {
-        type: 'faculty_leave',
-        day,
-        facultyId,
-        description: `Faculty leave — ${facultyName(facultyId)} unavailable on ${day}`,
+        type: 'faculty_unavailable',
+        faculty_id: activeFaculty,
+        days: [day],
+        periods,
+        reason: reason.trim() || 'Faculty leave',
       }
     }
     return {
-      type: 'room_closure',
-      day,
-      roomId,
-      description: `Room closure — ${roomName(roomId)} unavailable on ${day}`,
+      type: 'room_unavailable',
+      room_id: activeRoom,
+      days: [day],
+      periods,
+      reason: reason.trim() || 'Room closure',
     }
+  }, [type, activeFaculty, activeRoom, day, periods, reason])
+
+  if (!user) return null
+
+  if (official.loading && !dataset) {
+    return <PageSkeleton label="Loading the official change workflow…" variant="form" rows={5} />
   }
 
-  const buildRepair = () => {
-    setBusy(true)
-    setFlash(null)
-    setRepair(null)
-    setPlan(null)
-    const spec = makeSpec()
-    window.setTimeout(() => {
-      try {
-        const nextPlan = planDisruption(data, spec)
-        if (nextPlan.affectedSessionIds.length === 0) {
-          setPlan(nextPlan)
-          setFlash({
-            tone: 'error',
-            message: `${nextPlan.summary}. Nothing to repair — pick another day or target.`,
-          })
-          return
-        }
-        const currentPlacements = data.sessions.map((session) => ({
-          sessionId: session.id,
-          day: session.day,
-          startPeriod: session.startPeriod,
-          periods: session.periods,
-          roomId: session.roomId,
-        }))
-        const result = repairTimetable(nextPlan.input, currentPlacements, nextPlan.affectedSessionIds)
-        setPlan(nextPlan)
-        setBuiltSpec(spec)
-        setRepair(result)
-        setFlash({
-          tone: result.status === 'FEASIBLE' ? 'success' : 'error',
-          message: result.message,
-        })
-      } catch (error) {
-        setFlash({
-          tone: 'error',
-          message: error instanceof Error ? error.message : 'The repair engine failed unexpectedly.',
-        })
-      } finally {
-        setBusy(false)
-      }
-    }, 50)
-  }
-
-  const submit = () => {
-    if (!repair || !plan || !builtSpec) return
-    const outcome = submitProposal(
-      {
-        title: builtSpec.description,
-        route:
-          builtSpec.type === 'faculty_leave'
-            ? 'Admin (faculty-leave repair)'
-            : 'Admin (room-closure repair)',
-        detail: `${plan.summary}. Minimum-moved repair: ${repair.movedCount} of ${plan.affectedSessionIds.length} affected session(s) relocated; unaffected sessions left untouched.`,
-        disruption: builtSpec,
-        before: repair.before.map((placement) => ({
-          sessionId: placement.sessionId,
-          day: placement.day,
-          startPeriod: placement.startPeriod,
-          roomId: placement.roomId,
-        })),
-        after: repair.after.map((placement) => ({
-          sessionId: placement.sessionId,
-          day: placement.day,
-          startPeriod: placement.startPeriod,
-          roomId: placement.roomId,
-        })),
-        movedCount: repair.movedCount,
-        conflicts: [],
-      },
-      user,
+  if (!dataset) {
+    return (
+      <div>
+        <PageHeader title="Change proposals" subtitle="Official disruption repair" />
+        <EmptyState
+          icon={GitCompareArrows}
+          title="Official dataset not loaded"
+          description="Start the backend and load cit_public.json from Import / Exports."
+          action={
+            <Link to="/admin" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
+              Open Import / Exports
+            </Link>
+          }
+        />
+      </div>
     )
+  }
 
-    if (!outcome.ok) {
-      setFlash({ tone: 'error', message: outcome.error })
+  if (!official.schedule) {
+    return (
+      <div>
+        <PageHeader title="Change proposals" subtitle="Official disruption repair" />
+        <EmptyState
+          icon={GitCompareArrows}
+          title="Generate the timetable first"
+          description="A change proposal is repaired against the generated official schedule."
+          action={
+            <Link to="/admin" className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
+              Generate schedule
+            </Link>
+          }
+        />
+      </div>
+    )
+  }
+
+  const submitBuilder = async () => {
+    if (user.role !== 'admin') {
+      setFlash({ tone: 'error', message: 'Only Admin can upload a disruption; use My Workspace to request a change.' })
       return
     }
-    setData({ ...outcome.data })
-    setFlash({
-      tone: 'success',
-      message: `Submitted ${outcome.id}. The timetable is unchanged until an Admin approves it in the approvals inbox.`,
-    })
-    setRepair(null)
-    setPlan(null)
-    setBuiltSpec(null)
+    if (!periods.length) {
+      setFlash({ tone: 'error', message: 'Select at least one period.' })
+      return
+    }
+    const change = { changes: [changePayload] }
+    const file = new File([JSON.stringify(change)], 'change.json', { type: 'application/json' })
+    setFlash(null)
+    const result = await official.uploadDisruption(file)
+    setFlash(
+      result
+        ? { tone: 'success', message: 'Repair proposal built. Review the diff and approve it in Approvals.' }
+        : { tone: 'error', message: 'The change file was rejected; the published schedule is unchanged.' },
+    )
   }
 
-  const canSubmit = repair !== null && repair.status === 'FEASIBLE' && repair.violations.length === 0
-
-  const beforeBySession = new Map((repair?.before ?? []).map((placement) => [placement.sessionId, placement]))
+  const uploadFile = async (file: File | undefined) => {
+    if (!file) return
+    if (user.role !== 'admin') {
+      setFlash({ tone: 'error', message: 'Only Admin can upload a disruption change file.' })
+      return
+    }
+    setFlash(null)
+    const result = await official.uploadDisruption(file)
+    setFlash(
+      result
+        ? { tone: 'success', message: 'Change file accepted. Review the diff and approve it in Approvals.' }
+        : { tone: 'error', message: 'The change file was rejected; the published schedule is unchanged.' },
+    )
+  }
 
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="Change proposals"
-        subtitle="Repair a faculty leave or a room closure. The engine re-places only the affected sessions, shows the exact diff, and nothing changes until an Admin approves."
+        subtitle="Faculty leave, room closure or a change file. The official solver repairs the timetable, shows the exact diff and waits for Admin approval."
       />
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+      {official.error && !flash && <StatusNotice tone="error">{official.error}</StatusNotice>}
 
-      {/* Disruption builder */}
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-          <Wrench className="h-4 w-4 text-neutral-700" aria-hidden />
-          Describe the disruption
-        </h3>
+      {user.role === 'admin' ? (
+        <section className="cit-card rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Wrench className="h-4 w-4 text-neutral-700" aria-hidden /> Build a change
+          </h3>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label htmlFor="disruption-type" className="mb-1 block text-xs font-medium text-slate-600">
-              Disruption type
-            </label>
-            <select
-              id="disruption-type"
-              value={disruptionType}
-              onChange={(event) => setDisruptionType(event.target.value as DisruptionType)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-            >
-              <option value="faculty_leave">Faculty leave</option>
-              <option value="room_closure">Room closure</option>
-            </select>
-          </div>
-
-          {disruptionType === 'faculty_leave' ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <label htmlFor="disruption-faculty" className="mb-1 block text-xs font-medium text-slate-600">
-                Faculty member
+              <label htmlFor="change-type" className="mb-1 block text-xs font-medium text-slate-600">
+                Change type
               </label>
               <select
-                id="disruption-faculty"
-                value={facultyId}
-                onChange={(event) => setFacultyId(event.target.value)}
+                id="change-type"
+                value={type}
+                onChange={(event) => setType(event.target.value as ChangeType)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
               >
-                {data.faculty.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name} · {member.department}
-                  </option>
-                ))}
+                <option value="faculty_leave">Faculty leave</option>
+                <option value="room_closure">Room closure</option>
               </select>
             </div>
-          ) : (
-            <div>
-              <label htmlFor="disruption-room" className="mb-1 block text-xs font-medium text-slate-600">
-                Room
-              </label>
-              <select
-                id="disruption-room"
-                value={roomId}
-                onChange={(event) => setRoomId(event.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-              >
-                {data.rooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.name} · {room.building}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
 
-          <div>
-            <label htmlFor="disruption-day" className="mb-1 block text-xs font-medium text-slate-600">
-              Day
-            </label>
-            <select
-              id="disruption-day"
-              value={day}
-              onChange={(event) => setDay(event.target.value as Day)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-            >
-              {DAYS.map((weekday) => (
-                <option key={weekday} value={weekday}>
-                  {weekday}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={buildRepair}
-              disabled={busy}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              ) : (
-                <GitCompareArrows className="h-4 w-4" aria-hidden />
-              )}
-              {busy ? 'Repairing…' : 'Build repair candidate'}
-            </button>
-          </div>
-        </div>
-
-        <p className="mt-2 text-[11px] text-neutral-600">
-          Extra-session disruptions are not built yet. Faculty leave and room closure are fully
-          supported. Repair output is demo-validated, not official-validator output.
-        </p>
-      </section>
-
-      {/* Repair preview */}
-      {repair && plan && (
-        <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-              <GitCompareArrows className="h-4 w-4 text-neutral-700" aria-hidden />
-              Repair preview
-            </h3>
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLE[repair.status]}`}
-            >
-              {repair.status === 'FEASIBLE' ? (
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-              ) : (
-                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-              )}
-              {repair.status}
-            </span>
-          </div>
-
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-            <div>
-              <dt className="text-slate-500">Affected sessions</dt>
-              <dd className="font-semibold text-slate-900">{plan.affectedSessionIds.length}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Actually moved</dt>
-              <dd className="font-semibold text-slate-900">{repair.movedCount}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Duration</dt>
-              <dd className="font-semibold text-slate-900">{repair.metrics.durationMs} ms</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Search nodes</dt>
-              <dd className="font-semibold text-slate-900">{repair.metrics.nodes}</dd>
-            </div>
-          </dl>
-
-          {repair.violations.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
-              {repair.violations.map((violation, index) => (                  <li
-                  key={`${violation.code}-${index}`}
-                  className="rounded border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-800"
+            {type === 'faculty_leave' ? (
+              <div>
+                <label htmlFor="change-faculty" className="mb-1 block text-xs font-medium text-slate-600">
+                  Faculty
+                </label>
+                <select
+                  id="change-faculty"
+                  value={activeFaculty}
+                  onChange={(event) => setFacultyId(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
                 >
-                  <span className="mr-1.5 font-semibold">{violation.code}</span>
-                  {violation.message}
-                </li>
-              ))}
-            </ul>
-          )}
+                  {faculty.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} · {member.department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label htmlFor="change-room" className="mb-1 block text-xs font-medium text-slate-600">
+                  Room
+                </label>
+                <select
+                  id="change-room"
+                  value={activeRoom}
+                  onChange={(event) => setRoomId(event.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                >
+                  {rooms.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.name} · {room.building}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th scope="col" className="px-3 py-2">Session</th>
-                  <th scope="col" className="px-3 py-2">Before</th>
-                  <th scope="col" className="px-3 py-2">Proposed</th>
-                  <th scope="col" className="px-3 py-2">Change</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {repair.after.map((placement) => {
-                  const before = beforeBySession.get(placement.sessionId)
-                  const session = sessionById.get(placement.sessionId)
-                  const changed =
-                    !before ||
-                    before.day !== placement.day ||
-                    before.startPeriod !== placement.startPeriod ||
-                    before.roomId !== placement.roomId
-                  return (
-                    <tr key={placement.sessionId} className="align-top">
-                      <td className="px-3 py-2">
-                        <p className="font-medium text-slate-800">{session?.courseCode}</p>
-                        <p className="text-[11px] text-slate-500">{session?.courseName}</p>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-600">
-                        {before
-                          ? `${roomName(before.roomId)} · ${before.day} ${periodRangeLabel(before.startPeriod, session?.periods ?? 1)}`
-                          : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-600">
-                        {`${roomName(placement.roomId)} · ${placement.day} ${periodRangeLabel(placement.startPeriod, session?.periods ?? 1)}`}
-                      </td>
-                      <td className="px-3 py-2">
-                        {changed ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-neutral-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-800">
-                            <ArrowRight className="h-3 w-3" aria-hidden />
-                            Moved
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                            Held
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <div>
+              <label htmlFor="change-day" className="mb-1 block text-xs font-medium text-slate-600">
+                Day
+              </label>
+              <select
+                id="change-day"
+                value={day}
+                onChange={(event) => setDay(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                {days.map((weekday) => (
+                  <option key={weekday} value={weekday}>
+                    {weekday}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="change-reason" className="mb-1 block text-xs font-medium text-slate-600">
+                Reason
+              </label>
+              <input
+                id="change-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Conference, maintenance..."
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400"
+              />
+            </div>
           </div>
+
+          <fieldset className="mt-4">
+            <legend className="mb-2 text-xs font-medium text-slate-600">Affected periods</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {Array.from({ length: 9 }, (_, index) => index + 1).map((period) => (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() =>
+                    setPeriods((current) =>
+                      current.includes(period)
+                        ? current.filter((value) => value !== period)
+                        : [...current, period].sort((a, b) => a - b),
+                    )
+                  }
+                  aria-pressed={periods.includes(period)}
+                  className={`rounded-md border px-2.5 py-1 text-xs font-semibold ${
+                    periods.includes(period)
+                      ? 'border-neutral-900 bg-neutral-900 text-white'
+                      : 'border-slate-300 bg-white text-slate-700'
+                  }`}
+                >
+                  P{period}
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={submit}
-              disabled={!canSubmit}
-              className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => void submitBuilder()}
+              disabled={official.busy}
+              className="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
-              <Send className="h-4 w-4" aria-hidden />
-              Submit for Admin approval
+              {official.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitCompareArrows className="h-4 w-4" />}
+              {official.busy ? 'Repairing…' : 'Build official repair'}
             </button>
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              disabled={official.busy}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4" /> Upload change file
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                void uploadFile(file)
+                event.target.value = ''
+              }}
+            />
             <span className="text-[11px] text-slate-500">
-              {canSubmit
-                ? 'Submission records the proposal; the schedule is not modified until approval.'
-                : 'Submission is blocked while the repair is infeasible, times out or leaves a hard violation.'}
+              Supports faculty leave, room closure, add/remove session via the official change-file format.
+            </span>
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
+          <p>
+            Change proposals for coordinators are submitted from <strong>My Workspace</strong>. Admin
+            approves them here after the official solver validates the move.
+          </p>
+          <Link to="/workspace" className="mt-3 inline-block text-xs font-semibold text-neutral-900 hover:underline">
+            Open My Workspace →
+          </Link>
+        </section>
+      )}
+
+      {diff && (
+        <section className="cit-card mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <GitCompareArrows className="h-4 w-4 text-neutral-700" aria-hidden /> Official repair preview
+            </h3>
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                (official.schedule?.after_summary?.hard_violation_count ?? 0) === 0
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : 'bg-rose-100 text-rose-800'
+              }`}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+              {proposalStatus ?? 'pending'} · {diff.moved_count} moved
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+            <div>
+              <p className="text-slate-500">Moved</p>
+              <p className="font-semibold text-slate-900">{diff.moved_count}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Time changed</p>
+              <p className="font-semibold text-slate-900">{diff.time_changed}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Room only</p>
+              <p className="font-semibold text-slate-900">{diff.room_only_changed}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Hard violations</p>
+              <p className="font-semibold text-slate-900">
+                {official.schedule?.after_summary?.hard_violation_count ?? '—'}
+              </p>
+            </div>
+          </div>
+          {diff.moved.length > 0 && (
+            <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2">Session</th>
+                    <th className="px-3 py-2">Before</th>
+                    <th className="px-3 py-2">After</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {diff.moved.map((row) => (
+                    <tr key={row.session_id}>
+                      <td className="px-3 py-2 font-medium text-slate-800">{row.session_id}</td>
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        {row.before.room_id} · {row.before.day} P{row.before.start_period}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-600">
+                        {row.after.room_id} · {row.after.day} P{row.after.start_period}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {(diff.added_sessions.length > 0 || diff.removed_sessions.length > 0) && (
+            <p className="mt-3 text-xs text-slate-600">
+              {diff.added_sessions.length > 0 && (
+                <>Added: <span className="font-semibold">{diff.added_sessions.join(', ')}</span>. </>
+              )}
+              {diff.removed_sessions.length > 0 && (
+                <>Removed: <span className="font-semibold">{diff.removed_sessions.join(', ')}</span>.</>
+              )}
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Link
+              to="/approvals"
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Review in Approvals →
+            </Link>
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              Nothing is published until Admin approves.
             </span>
           </div>
         </section>
       )}
-
-      {/* Proposals */}
-      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-900">Change proposals</h3>
-          <Link
-            to="/approvals"
-            className="text-xs font-semibold text-neutral-900 transition-colors hover:text-neutral-700"
-          >
-            Open approvals inbox →
-          </Link>
-        </div>
-
-        {data.proposals.length === 0 ? (
-          <div className="mt-3">
-            <EmptyState
-              icon={GitCompareArrows}
-              title="No change proposals yet"
-              description="Build a repair candidate above and submit it. It will appear here and in the Admin's approvals inbox."
-            />
-          </div>
-        ) : (
-          <ul className="mt-3 divide-y divide-slate-100">
-            {data.proposals.map((proposal) => (
-              <li key={proposal.id} className="py-3.5">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800">{proposal.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {proposal.id} · requester {proposal.requester} · {timeAgo(proposal.submittedAt)}
-                      {proposal.decidedBy ? ` · decided by ${proposal.decidedBy}` : ''}
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-600">{proposal.detail}</p>
-                  </div>
-                  <span
-                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-                      proposal.status === 'approved'
-                        ? 'bg-neutral-100 text-neutral-800'
-                        : proposal.status === 'rejected'
-                          ? 'bg-neutral-100 text-neutral-800'
-                          : 'bg-neutral-100 text-neutral-800'
-                    }`}
-                  >
-                    {proposal.status === 'pending'
-                      ? 'Pending Admin'
-                      : proposal.status === 'approved'
-                        ? 'Approved & applied'
-                        : 'Rejected'}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   )
 }

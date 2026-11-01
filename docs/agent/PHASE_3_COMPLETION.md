@@ -7,9 +7,9 @@ The engine now runs behind FastAPI, and the system-level gaps are closed:
 - **Priority policy:** `GET/PUT /api/policy` (Admin), invalid permutations rejected; changing it invalidates the schedule and affects the next generate (verified: default score 63 vs custom 64.5).
 - **Approval gate:** a disruption creates `proposal_status = pending`; `schedule_after.json` returns 404 until `POST /api/proposal/approve`; reject discards it.
 - **Manual scheduling:** `POST /api/manual` validates against H2–H12 and never auto-applies; conflicts return 422 with rule IDs.
-- **Role enforcement:** demo identity header; Admin-only generate/reset/approve/policy, Admin or Coordinator for manual proposals.
+- **Role enforcement:** signed bearer tokens; Admin-only generate/reset/policy, Admin or owning department coordinator for booking and change decisions; no self-approval.
 - **Persistence:** SQLite; generated schedule survives a restart.
-- **Tests:** 28 engine tests + 10 backend API tests pass. Latest result: soft 3, booking score 63/70, disruption 12 moved (minimal).
+- **Tests:** 28 engine tests + 10 backend API tests pass. Latest result: base soft 3, booking score 63.0/70, disruption 13 moved (minimal; 1 time, 12 room-only), after soft 4.
 
 ---
 

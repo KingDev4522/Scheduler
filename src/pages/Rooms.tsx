@@ -9,16 +9,38 @@ import {
   XCircle,
 } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
-import { EmptyState } from '../components/States'
+import { EmptyState, ErrorState } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
 import { RoomTypeBadge } from '../components/Badges'
-import { getData, type RoomType } from '../lib/store'
+import { type AppData, type RoomType } from '../lib/store'
 import { DAYS, type Day } from '../lib/time'
 import { freeWindowLabel, roomAvailability } from '../lib/selectors'
+import { useOfficial } from '../hooks/useOfficial'
+import { buildOfficialView } from '../lib/official'
 
 type TypeFilter = RoomType | 'all'
 
+const EMPTY_DATA: AppData = {
+  version: 0,
+  rooms: [],
+  faculty: [],
+  groups: [],
+  sessions: [],
+  bookings: [],
+  proposals: [],
+  audit: [],
+}
+
 export default function Rooms() {
-  const [data] = useState(getData)
+  const official = useOfficial()
+  const officialView = useMemo(
+    () =>
+      official.dataset && official.schedule
+        ? buildOfficialView(official.dataset, official.schedule)
+        : null,
+    [official.dataset, official.schedule],
+  )
+  const data = officialView?.data ?? EMPTY_DATA
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [minCapacity, setMinCapacity] = useState('')
@@ -61,11 +83,49 @@ export default function Rooms() {
     setFeatureFilter('all')
   }
 
+  if (official.loading && !official.dataset) {
+    return <PageSkeleton label="Loading the official room inventory…" variant="table" cards={4} rows={8} />
+  }
+
+  if (official.error && !official.health) {
+    return (
+      <div>
+        <PageHeader title="Room finder" subtitle="Official room inventory" />
+        <ErrorState
+          title="Backend not reachable"
+          description={official.error}
+          onRetry={() => void official.refresh()}
+        />
+      </div>
+    )
+  }
+
+  if (!officialView || !official.schedule) {
+    return (
+      <div>
+        <PageHeader title="Room finder" subtitle="Official room inventory" />
+        <EmptyState
+          icon={DoorOpen}
+          title="No official schedule yet"
+          description="Generate the timetable first so room availability is computed from real placements."
+          action={
+            <Link
+              to="/admin"
+              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Open Import / Exports
+            </Link>
+          }
+        />
+      </div>
+    )
+  }
+
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="Room finder"
-        subtitle="Filter every space by capacity, type, features and accessibility. Availability uses demo sessions and approved bookings."
+        subtitle="Filter every official space by capacity, type, features and accessibility. Availability uses the generated timetable and approved bookings."
       />
 
       <p className="mb-4 text-xs text-slate-500">
@@ -73,7 +133,7 @@ export default function Rooms() {
       </p>
 
       {/* Filters */}
-      <section className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-neutral-700" aria-hidden />
           <h3 className="text-sm font-semibold text-slate-900">Filters</h3>
@@ -213,7 +273,7 @@ export default function Rooms() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
+          <div className="cit-card hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
             <table className="w-full min-w-[840px] text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
@@ -226,7 +286,7 @@ export default function Rooms() {
                   <th scope="col" className="px-4 py-3 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="cit-stagger-rows divide-y divide-slate-100">
                 {filteredRooms.map((room) => {
                   const availability = roomAvailability(data, room.id, day)
                   return (
@@ -299,7 +359,7 @@ export default function Rooms() {
           </div>
 
           {/* Mobile cards */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
+          <div className="cit-stagger grid grid-cols-1 gap-3 sm:grid-cols-2 lg:hidden">
             {filteredRooms.map((room) => {
               const availability = roomAvailability(data, room.id, day)
               return (

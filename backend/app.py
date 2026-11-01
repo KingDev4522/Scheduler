@@ -11,11 +11,13 @@ Run:
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import hmac
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -36,11 +38,13 @@ from solver.data import Data
 from solver.diff import build_diff
 from solver.exams import solve_exams
 from solver.export import apply_disruption, build_schedule, write_schedule
-from solver.manual import validate_manual
+from solver.manual import suggest_session_alternatives, validate_manual
 from solver.policy import CATEGORIES, Policy
 from solver.weekly import solve_weekly
 
 from . import store
+from .console import banner, done, error, install_sarcastic_access_logs, rule, step, warn
+from .semester import derive_semester, weeks_for_dates
 from .assistant import (
     GEMINI_MODEL,
     AssistantUnavailable,
@@ -83,7 +87,9 @@ DEMO_PROFILES = {
 DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "1234")
 SESSION_SECRET = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "28800"))
-ALLOW_DEMO_HEADER = os.getenv("ALLOW_DEMO_HEADER", "1") != "0"
+# Keep demo-header access opt-in. Judges use the documented demo logins; a
+# public deployment must not accept an unsigned identity header.
+ALLOW_DEMO_HEADER = os.getenv("ALLOW_DEMO_HEADER", "0") == "1"
 PUBLIC_API_PATHS = {"/api/health", "/api/auth/login"}
 
 app = FastAPI(title="CIT Scheduler API", version="1.0.0")
@@ -109,6 +115,9 @@ STATE: dict[str, Any] = {
     "decisions": None,
     "approvals": None,
     "after": None,
+    "after_placements": None,
+    "after_decisions": None,
+    "after_approvals": None,
     "after_report": None,
     "diff": None,
     "generated_at": None,
@@ -206,7 +215,11 @@ async def authenticate(request, call_next):
 def login(payload: dict) -> dict:
     username = str(payload.get("username") or "").strip().lower()
     password = str(payload.get("password") or "")
-    if username not in DEMO_USERS or not hmac.compare_digest(password, DEMO_PASSWORD):
+    try:
+        password_ok = hmac.compare_digest(password, DEMO_PASSWORD)
+    except TypeError:
+        password_ok = False
+    if username not in DEMO_USERS or not password_ok:
         raise HTTPException(status_code=401, detail="invalid username or password")
     return {"token": _issue_token(username), "user": _public_user(username)}
 
@@ -260,6 +273,20 @@ def _check_dataset(raw: Any) -> list[str]:
     faculty_ids = {f.get("id") for f in raw["faculty"]}
     group_ids = {g.get("id") for g in raw["student_groups"]}
     course_ids = {c.get("id") for c in raw["courses"]}
+    for key in ("rooms", "faculty", "student_groups", "courses", "sessions", "exams", "booking_requests"):
+        ids = [item.get("id") for item in raw[key] if isinstance(item, dict)]
+        if len(ids) != len(set(ids)):
+            errors.append(f"{key}: duplicate ids")
+    order = raw.get("priority_order")
+    if not isinstance(order, list) or sorted(order) != sorted(CATEGORIES):
+        errors.append(f"priority_order must be a permutation of {list(CATEGORIES)}")
+    caps = raw.get("role_category_cap")
+    if not isinstance(caps, dict):
+        errors.append("role_category_cap must be an object")
+    else:
+        for role, cap in caps.items():
+            if cap not in CATEGORIES:
+                errors.append(f"role_category_cap[{role!r}] is not a valid category")
     for index, session in enumerate(raw["sessions"]):
         if session.get("course_id") not in course_ids:
             errors.append(f"sessions[{index}]: unknown course {session.get('course_id')!r}")
@@ -271,9 +298,42 @@ def _check_dataset(raw: Any) -> list[str]:
         for room_type in session.get("room_types", []):
             if not any(r.get("type") == room_type for r in raw["rooms"]):
                 errors.append(f"sessions[{index}]: no room of type {room_type!r}")
+        fixed = session.get("fixed_slot")
+        if fixed and (fixed.get("day") not in raw["calendar"]["days"] or not isinstance(fixed.get("start_period"), int)):
+            errors.append(f"sessions[{index}]: invalid fixed_slot")
     for index, room in enumerate(raw["rooms"]):
-        if room.get("id") not in room_ids:
-            errors.append(f"rooms[{index}]: missing id")
+        if not room.get("id") or not room.get("type"):
+            errors.append(f"rooms[{index}]: id and type are required")
+    for index, entry in enumerate(raw.get("room_unavailability", [])):
+        if entry.get("room_id") not in room_ids:
+            errors.append(f"room_unavailability[{index}]: unknown room_id")
+        if entry.get("day") not in raw["calendar"]["days"]:
+            errors.append(f"room_unavailability[{index}]: invalid day")
+    for index, member in enumerate(raw["faculty"]):
+        for entry in member.get("unavailable", []):
+            if entry.get("day") not in raw["calendar"]["days"]:
+                errors.append(f"faculty[{index}]: invalid unavailable day")
+            if not isinstance(entry.get("periods"), list):
+                errors.append(f"faculty[{index}]: unavailable periods must be a list")
+    for index, exam in enumerate(raw["exams"]):
+        for course_id in exam.get("course_ids", []):
+            if course_id not in course_ids:
+                errors.append(f"exams[{index}]: unknown course {course_id!r}")
+        for group in exam.get("groups", []):
+            if group not in group_ids:
+                errors.append(f"exams[{index}]: unknown group {group!r}")
+        if not isinstance(exam.get("size"), int) or exam["size"] <= 0:
+            errors.append(f"exams[{index}]: size must be a positive integer")
+    for index, request in enumerate(raw["booking_requests"]):
+        if request.get("role") not in raw["role_category_cap"]:
+            errors.append(f"booking_requests[{index}]: unknown role")
+        if request.get("requested_category") not in CATEGORIES:
+            errors.append(f"booking_requests[{index}]: unknown category")
+        for window in request.get("windows", []):
+            if window.get("day") not in raw["calendar"]["days"]:
+                errors.append(f"booking_requests[{index}]: invalid window day")
+            if not isinstance(window.get("from_period"), int) or not isinstance(window.get("to_period"), int):
+                errors.append(f"booking_requests[{index}]: window periods must be integers")
     return errors
 
 
@@ -291,6 +351,7 @@ def _load_raw(raw: dict, source: str, *, persist: bool = True) -> None:
     if persist:
         store.save_dataset(raw, source)
         store.clear_generation()
+        _clear_api_exports()
     STATE.update(
         raw=raw,
         data=data,
@@ -301,6 +362,9 @@ def _load_raw(raw: dict, source: str, *, persist: bool = True) -> None:
         decisions=None,
         approvals=None,
         after=None,
+        after_placements=None,
+        after_decisions=None,
+        after_approvals=None,
         after_report=None,
         diff=None,
         generated_at=None,
@@ -329,8 +393,11 @@ def _validate(data_path: Path, schedule_path: Path, extra: list[str] | None = No
         *(extra or []),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    if result.returncode not in (0, 1):  # validator exits 0 even with violations
-        raise HTTPException(status_code=500, detail=f"validator failed: {result.stderr[-800:]}")
+    if result.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=f"validator failed (exit {result.returncode}): {result.stderr[-1200:]}",
+        )
     return json.loads(report_path.read_text(encoding="utf-8"))
 
 
@@ -354,6 +421,9 @@ def _invalidate_generation() -> None:
         decisions=None,
         approvals=None,
         after=None,
+        after_placements=None,
+        after_decisions=None,
+        after_approvals=None,
         after_report=None,
         diff=None,
         generated_at=None,
@@ -361,10 +431,189 @@ def _invalidate_generation() -> None:
     )
     store.clear_generation()
     store.save_state(STATE)
-    for name in ("schedule.json", "schedule_after.json", "proposal_after.json"):
+    _clear_api_exports()
+
+
+API_EXPORT_NAMES = (
+    "schedule.json",
+    "schedule.report.json",
+    "schedule_after.json",
+    "schedule_after.report.json",
+    "proposal_after.json",
+    "proposal_after.report.json",
+    "disruption.json",
+)
+
+
+def _clear_api_exports() -> None:
+    for name in API_EXPORT_NAMES:
         path = API_EXPORTS / name
         if path.exists():
             path.unlink()
+
+
+ROOM_DEPARTMENT = {
+    "CS-LAB-1": "CSE",
+    "CS-LAB-2": "CSE",
+    "ELEC-LAB-1": "ECE",
+    "ELEC-LAB-2": "ECE",
+    "PHY-LAB": "SCIENCE",
+    "MECH-WS": "ME",
+    "CIVIL-LAB": "CE",
+}
+
+
+def _room_department(room_id: str | None) -> str | None:
+    if not room_id:
+        return None
+    if room_id in ROOM_DEPARTMENT:
+        return ROOM_DEPARTMENT[room_id]
+    upper = room_id.upper()
+    if upper.startswith("CS-LAB"):
+        return "CSE"
+    if upper.startswith("ELEC-LAB"):
+        return "ECE"
+    if upper.startswith("PHY-LAB"):
+        return "SCIENCE"
+    if upper.startswith("MECH"):
+        return "ME"
+    if upper.startswith("CIVIL-LAB"):
+        return "CE"
+    return None
+
+
+def _actor_department(user: str) -> str | None:
+    return DEMO_PROFILES.get(user, {}).get("department")
+
+
+def _coordinator_can_decide_room(user: str, room_id: str | None) -> bool:
+    department = _actor_department(user)
+    return bool(department and _room_department(room_id) == department)
+
+
+def _session_department(session_id: str | None) -> str | None:
+    data: Data | None = STATE.get("data")
+    if data is None or not session_id:
+        return None
+    session = data.sessions.get(session_id)
+    if session is None:
+        return None
+    for group_id in session.get("groups", []):
+        group = data.groups.get(group_id)
+        if group and group.get("department"):
+            return str(group["department"])
+    course = data.courses.get(session.get("course_id"))
+    if course and course.get("department"):
+        return str(course["department"])
+    faculty = data.faculty.get(session.get("faculty_id"))
+    if faculty and faculty.get("department"):
+        return str(faculty["department"])
+    return None
+
+
+def _coordinator_can_decide_session(user: str, session_id: str | None) -> bool:
+    department = _actor_department(user)
+    return bool(department and _session_department(session_id) == department)
+
+
+def _infeasible_hints(data: Data, extra_fac: set, extra_room: set) -> list[str]:
+    hints: list[str] = []
+    faculty_unavailable = data.fac_unavailable | extra_fac
+    for session in data.sessions.values():
+        starts = data.legal_starts(session["duration"], session["kind"])
+        usable = []
+        for day in data.days:
+            for start in starts:
+                fixed = session.get("fixed_slot")
+                if fixed and (fixed["day"] != day or fixed["start_period"] != start):
+                    continue
+                if any(
+                    (session["faculty_id"], day, p) in faculty_unavailable
+                    for p in data.block(start, session["duration"])
+                ):
+                    continue
+                usable.append((day, start))
+        if not usable:
+            hints.append(
+                f"{session['id']}: no legal teaching slot after closures, fixed-slot or daily-hour rules"
+            )
+        if not data.eligible_rooms(session):
+            hints.append(
+                f"{session['id']}: no room matches type, capacity or accessibility"
+            )
+    return hints[:25] or [
+        "no single-session precheck failed; the combined room, faculty, group and basket constraints are infeasible"
+    ]
+
+
+def _check_disruption(data: Data, change: dict) -> list[str]:
+    errors: list[str] = []
+    changes = change.get("changes")
+    if not isinstance(changes, list) or not changes:
+        return ["changes must be a non-empty array"]
+    for index, item in enumerate(changes):
+        if not isinstance(item, dict):
+            errors.append(f"changes[{index}] must be an object")
+            continue
+        kind = item.get("type")
+        prefix = f"changes[{index}]"
+        if kind == "faculty_unavailable":
+            if item.get("faculty_id") not in data.faculty:
+                errors.append(f"{prefix}: unknown faculty_id")
+            for day in item.get("days", []):
+                if day not in data.days:
+                    errors.append(f"{prefix}: invalid day {day!r}")
+            periods = item.get("periods")
+            if not isinstance(periods, list) or not all(
+                isinstance(p, int) and 1 <= p <= 13 for p in periods
+            ):
+                errors.append(f"{prefix}: periods must be integers 1..13")
+        elif kind == "room_unavailable":
+            if item.get("room_id") not in data.rooms:
+                errors.append(f"{prefix}: unknown room_id")
+            for day in item.get("days", []):
+                if day not in data.days:
+                    errors.append(f"{prefix}: invalid day {day!r}")
+            periods = item.get("periods")
+            if not isinstance(periods, list) or not all(
+                isinstance(p, int) and 1 <= p <= 13 for p in periods
+            ):
+                errors.append(f"{prefix}: periods must be integers 1..13")
+        elif kind == "add_faculty":
+            faculty = item.get("faculty")
+            if not isinstance(faculty, dict):
+                errors.append(f"{prefix}: faculty object is required")
+            elif faculty.get("id") in data.faculty:
+                errors.append(f"{prefix}: faculty id already exists")
+            elif not faculty.get("id") or not faculty.get("name"):
+                errors.append(f"{prefix}: faculty id and name are required")
+        elif kind == "add_session":
+            session = item.get("session")
+            if not isinstance(session, dict):
+                errors.append(f"{prefix}: session object is required")
+                continue
+            if session.get("id") in data.sessions:
+                errors.append(f"{prefix}: session id already exists")
+            if session.get("course_id") not in data.courses:
+                errors.append(f"{prefix}: unknown course_id")
+            if session.get("faculty_id") not in data.faculty:
+                errors.append(f"{prefix}: unknown faculty_id")
+            for group in session.get("groups", []):
+                if group not in data.groups:
+                    errors.append(f"{prefix}: unknown group {group!r}")
+            if session.get("kind") not in ("lecture", "tutorial", "lab"):
+                errors.append(f"{prefix}: invalid kind")
+            if not isinstance(session.get("duration"), int) or not (1 <= session["duration"] <= 9):
+                errors.append(f"{prefix}: duration must be 1..9")
+            for room_type in session.get("room_types", []):
+                if not any(r["type"] == room_type for r in data.rooms.values()):
+                    errors.append(f"{prefix}: no room of type {room_type!r}")
+        elif kind == "remove_session":
+            if item.get("session_id") not in data.sessions:
+                errors.append(f"{prefix}: unknown session_id")
+        else:
+            errors.append(f"{prefix}: unknown change type {kind!r}")
+    return errors
 
 
 def _faculty_for_actor(user: str) -> dict | None:
@@ -376,38 +625,68 @@ def _faculty_for_actor(user: str) -> dict | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def _generate(seconds: float = 90.0) -> dict:
+def _generate(seconds: float = 120.0) -> dict:
     seconds = min(max(float(seconds), 5.0), 150.0)
+    rule("Official schedule generation")
+    step(1, 6, "Waking the dataset. It was sleeping on the job.")
     if STATE["data"] is None:
         raise HTTPException(status_code=409, detail="no dataset loaded")
     data: Data = STATE["data"]
     policy: Policy = STATE["policy"] or Policy.from_dataset(data)
+    done(f"Dataset awake: {len(data.sessions)} sessions, {len(data.exams)} exams. Miracles happen.")
 
     for name in ("schedule_after.json", "proposal_after.json"):
         stale = API_EXPORTS / name
         if stale.exists():
             stale.unlink()
+    step(2, 6, f"Asking CP-SAT to place {len(data.sessions)} sessions. It enjoys showing off.")
     weekly = solve_weekly(data, max_seconds=seconds)
     if weekly.status != "FEASIBLE":
+        error(f"weekly solver returned {weekly.status}")
         raise HTTPException(
             status_code=422,
             detail={"status": weekly.status, "message": weekly.detail},
         )
+    done(f"{len(weekly.placements)} sessions placed. No chairs were harmed.")
+    step(3, 6, "Herding exams into rooms. Half capacity, full drama.")
     exams = solve_exams(data, max_seconds=min(seconds, 60))
     if exams.status != "FEASIBLE":
+        error(f"exam solver returned {exams.status}")
         raise HTTPException(status_code=422, detail={"status": exams.status, "message": "exams"})
+    done(f"{len(exams.placements)} exams placed. Students will still complain.")
 
+    step(4, 6, "Reading Spectra requests like a very tired bouncer.")
     decisions, stats = decide_bookings(data, weekly.placements, policy)
+    done(
+        f"{stats.get('approved', 0)} approved, "
+        f"{stats.get('alternative', 0)} got the polite maybe."
+    )
     try:
         export_rows, records = finalize_decisions(data, decisions, policy, approver="debjeet")
-    except ApprovalError as error:
-        raise HTTPException(status_code=403, detail=str(error)) from error
+    except ApprovalError as approval_error:
+        raise HTTPException(status_code=403, detail=str(approval_error)) from approval_error
 
+    step(5, 6, "Running the official validator — the only opinion that counts.")
     schedule = build_schedule(data, weekly.placements, export_rows, exams.placements)
     schedule_path = API_EXPORTS / "schedule.json"
     write_schedule(schedule_path, schedule)
     report = _validate(STATE["data_path"], schedule_path)
+    hard = report.get("hard_violation_count", 0)
+    if hard:
+        schedule_path.unlink(missing_ok=True)
+        (API_EXPORTS / "schedule.report.json").unlink(missing_ok=True)
+        error(f"{hard} hard violations. Refusing to publish an invalid schedule.")
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "status": "INVALID",
+                "hard_violation_count": hard,
+                "violations": report.get("hard_violations", [])[:40],
+            },
+        )
+    done(f"{hard} hard violations. Suspiciously competent.")
 
+    step(6, 6, "Writing exports. Paperwork, but make it digital.")
     STATE.update(
         schedule=schedule,
         placements=weekly.placements,
@@ -416,11 +695,22 @@ def _generate(seconds: float = 90.0) -> dict:
         approvals=records,
         generated_at=datetime.now(timezone.utc).isoformat(),
         after=None,
+        after_placements=None,
+        after_decisions=None,
+        after_approvals=None,
         after_report=None,
         diff=None,
         proposal_status=None,
     )
     store.save_state(STATE)
+    done("schedule.json written. Go show off.")
+    rule("Generation complete — go brag in Official Data.")
+    print(
+        f"      sessions={len(weekly.placements)} exams={len(exams.placements)} "
+        f"hard={hard} soft={report.get('soft_total', 0)} "
+        f"booking={(report.get('bookings') or {}).get('booking_score')}",
+        flush=True,
+    )
     return {
         "status": "FEASIBLE",
         "generated_at": STATE["generated_at"],
@@ -440,11 +730,17 @@ def _generate(seconds: float = 90.0) -> dict:
 
 @app.on_event("startup")
 def _startup() -> None:
+    install_sarcastic_access_logs()
     store.init_db()
     raw, source = store.load_dataset()
     if raw is None:
         if DEFAULT_DATA.exists():
             _load_raw(json.loads(DEFAULT_DATA.read_text(encoding="utf-8")), "bundled")
+        banner(
+            (STATE["raw"] or {}).get("dataset_id"),
+            STATE["source"],
+            STATE["schedule"] is not None,
+        )
         return
     _load_raw(raw, source or "stored", persist=False)
     saved = store.load_state()
@@ -457,6 +753,11 @@ def _startup() -> None:
                 dict(STATE["data"].role_cap),
                 saved.get("policy_version") or "stored",
             )
+    banner(
+        (STATE["raw"] or {}).get("dataset_id"),
+        STATE["source"],
+        STATE["schedule"] is not None,
+    )
 
 
 @app.get("/api/health")
@@ -492,6 +793,7 @@ def dataset(x_demo_user: str = Header(default="debjeet")) -> dict:
         "generated": STATE["schedule"] is not None,
         "generated_at": STATE["generated_at"],
         "proposal_status": STATE["proposal_status"],
+        "semester": derive_semester(raw),
         "entities": {
             "rooms": raw["rooms"],
             "faculty": raw["faculty"],
@@ -523,7 +825,7 @@ async def import_dataset(
 
 
 @app.post("/api/generate")
-def generate(x_demo_user: str = Header(default="debjeet"), seconds: float = 90.0) -> dict:
+def generate(x_demo_user: str = Header(default="debjeet"), seconds: float = 120.0) -> dict:
     _require_admin(x_demo_user)
     seconds = min(max(float(seconds), 5.0), 150.0)
     return _generate(seconds)
@@ -550,10 +852,12 @@ def schedule(x_demo_user: str = Header(default="debjeet")) -> dict:
 async def disruption(
     file: UploadFile = File(...),
     x_demo_user: str = Header(default="debjeet"),
-    seconds: float = 90.0,
+    seconds: float = 120.0,
 ) -> dict:
     _require_admin(x_demo_user)
     seconds = min(max(float(seconds), 5.0), 150.0)
+    rule("Disruption repair")
+    step(1, 5, "Reading the change file. Hopefully it's a small problem.")
     if STATE["schedule"] is None or STATE["placements"] is None:
         raise HTTPException(status_code=409, detail="generate a schedule first")
     try:
@@ -561,16 +865,21 @@ async def disruption(
         if len(payload) > 5_000_000:
             raise HTTPException(status_code=413, detail="disruption upload exceeds 5 MB")
         change = json.loads(payload)
-    except json.JSONDecodeError as error:
-        raise HTTPException(status_code=422, detail=f"invalid JSON: {error}") from error
+    except json.JSONDecodeError as json_error:
+        raise HTTPException(status_code=422, detail=f"invalid JSON: {json_error}") from json_error
     if not isinstance(change.get("changes"), list):
         raise HTTPException(status_code=422, detail="disruption must contain a changes array")
+    data: Data = STATE["data"]
+    disruption_errors = _check_disruption(data, change)
+    if disruption_errors:
+        raise HTTPException(status_code=422, detail={"errors": disruption_errors[:20]})
     disruption_path = API_EXPORTS / "disruption.json"
     disruption_path.write_text(json.dumps(change, ensure_ascii=False), encoding="utf-8")
+    done(f"{len(change['changes'])} change(s) read. Brave.")
 
-    data: Data = STATE["data"]
     disrupted_raw, extra_fac, extra_room, _added, _removed = apply_disruption(data.raw, change)
     disrupted = Data(disrupted_raw)
+    step(2, 5, "Repairing with CP-SAT. Minimum movement, maximum smugness.")
     result = solve_weekly(
         disrupted,
         max_seconds=seconds,
@@ -579,32 +888,66 @@ async def disruption(
         baseline=STATE["placements"],
     )
     if result.status != "FEASIBLE":
+        hints = _infeasible_hints(disrupted, extra_fac, extra_room)
+        error(f"repair returned {result.status}. The schedule stays untouched.")
         raise HTTPException(
             status_code=422,
-            detail={"status": result.status, "message": "no feasible repair; published schedule unchanged"},
+            detail={
+                "status": result.status,
+                "message": "no feasible repair; published schedule unchanged",
+                "conflicts": hints,
+            },
         )
+    done("Repair found. Nobody has to panic.")
+    step(3, 5, "Re-evaluating bookings after the repair.")
     policy = Policy.from_dataset(disrupted)
     decisions, stats = decide_bookings(disrupted, result.placements, policy)
     export_rows, records = finalize_decisions(disrupted, decisions, policy, approver="debjeet")
     exams = solve_exams(disrupted)
+    if exams.status != "FEASIBLE":
+        raise HTTPException(
+            status_code=422,
+            detail={"status": exams.status, "message": "exam week has no feasible assignment"},
+        )
     after_schedule = build_schedule(disrupted, result.placements, export_rows, exams.placements)
     after_path = API_EXPORTS / "proposal_after.json"
     write_schedule(after_path, after_schedule)
+    step(4, 5, "Validating the proposal. The validator has no friends.")
     report = _validate(
         STATE["data_path"],
         after_path,
         ["--disruption", str(disruption_path), "--baseline", str(API_EXPORTS / "schedule.json")],
     )
+    hard = report.get("hard_violation_count", 0)
+    if hard:
+        after_path.unlink(missing_ok=True)
+        (API_EXPORTS / "proposal_after.report.json").unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "status": "INVALID",
+                "hard_violation_count": hard,
+                "violations": report.get("hard_violations", [])[:40],
+            },
+        )
+    done(f"{hard} hard violations. Rude, but acceptable.")
+    step(5, 5, "Building the exact diff.")
     diff = build_diff(data, STATE["placements"], result.placements, change["changes"])
+    done(f"{diff['moved_count']} moved. Minimal movement, minimal drama.")
     stale = API_EXPORTS / "schedule_after.json"
     if stale.exists():
         stale.unlink()
     STATE.update(
         after=after_schedule,
+        after_placements=result.placements,
+        after_decisions=decisions,
+        after_approvals=records,
         after_report=report,
         diff=diff,
         approvals=records,
         proposal_status="pending",
+        proposal_approved_by=None,
+        proposal_approved_at=None,
     )
     store.save_state(STATE)
     return {
@@ -670,6 +1013,9 @@ def put_policy(payload: dict, x_demo_user: str = Header(default="debjeet")) -> d
         decisions=None,
         approvals=None,
         after=None,
+        after_placements=None,
+        after_decisions=None,
+        after_approvals=None,
         after_report=None,
         diff=None,
         generated_at=None,
@@ -677,22 +1023,29 @@ def put_policy(payload: dict, x_demo_user: str = Header(default="debjeet")) -> d
     )
     store.clear_generation()
     store.save_state(STATE)
-    for name in ("schedule.json", "schedule_after.json", "proposal_after.json"):
-        path = API_EXPORTS / name
-        if path.exists():
-            path.unlink()
+    _clear_api_exports()
     return get_policy()
 
 
 @app.post("/api/proposal/approve")
 def approve_proposal(x_demo_user: str = Header(default="debjeet")) -> dict:
     _require_admin(x_demo_user)
-    if STATE["after"] is None:
+    if STATE["after"] is None or STATE["after_placements"] is None:
         raise HTTPException(status_code=409, detail="no proposal to approve")
+    if (STATE["after_report"] or {}).get("hard_violation_count", 0):
+        raise HTTPException(status_code=409, detail="proposal has hard violations and cannot be approved")
     write_schedule(API_EXPORTS / "schedule_after.json", STATE["after"])
-    STATE["proposal_status"] = "approved"
-    STATE["proposal_approved_by"] = x_demo_user
-    STATE["proposal_approved_at"] = datetime.now(timezone.utc).isoformat()
+    write_schedule(API_EXPORTS / "schedule.json", STATE["after"])
+    STATE.update(
+        schedule=STATE["after"],
+        placements=STATE["after_placements"],
+        report=STATE["after_report"],
+        decisions=STATE["after_decisions"],
+        approvals=STATE["after_approvals"],
+        proposal_status="approved",
+        proposal_approved_by=x_demo_user,
+        proposal_approved_at=datetime.now(timezone.utc).isoformat(),
+    )
     store.save_state(STATE)
     return {
         "ok": True,
@@ -707,8 +1060,16 @@ def reject_proposal(x_demo_user: str = Header(default="debjeet")) -> dict:
     _require_admin(x_demo_user)
     if STATE["after"] is None:
         raise HTTPException(status_code=409, detail="no proposal to reject")
-    STATE.update(after=None, after_report=None, diff=None, proposal_status="rejected")
-    for name in ("schedule_after.json", "proposal_after.json"):
+    STATE.update(
+        after=None,
+        after_placements=None,
+        after_decisions=None,
+        after_approvals=None,
+        after_report=None,
+        diff=None,
+        proposal_status="rejected",
+    )
+    for name in ("schedule_after.json", "proposal_after.json", "proposal_after.report.json"):
         path = API_EXPORTS / name
         if path.exists():
             path.unlink()
@@ -756,6 +1117,17 @@ def _approved_bookings() -> list[dict]:
     for decision in STATE.get("decisions") or []:
         if decision.get("status") in ("approved", "alternative_offered"):
             out.append(decision)
+    for submission in store.list_submissions():
+        if submission.get("status") in ("approved", "alternative_offered"):
+            out.append(
+                {
+                    "request_id": submission.get("id"),
+                    "room_id": submission.get("room_id") or submission.get("requested_room"),
+                    "day": submission.get("day"),
+                    "start_period": submission.get("start_period"),
+                    "end_period": submission.get("end_period"),
+                }
+            )
     return out
 
 
@@ -791,12 +1163,13 @@ def _proposal_from_payload(payload: dict, actor_name: str, role: str) -> Booking
         windows=windows,
         room_types=list(payload.get("room_types") or []),
         needs=list(payload.get("needs") or []),
-        requested_room=payload.get("requested_room") or None,
+        requested_room=payload.get("requested_room") or payload.get("room_id") or None,
         mandatory_for_groups=list(payload.get("mandatory_for_groups") or []),
         raw_text=str(payload.get("raw_text") or ""),
         requested_category=payload.get("requested_category") or None,
         day=payload.get("day") or None,
         start_period=payload.get("start_period") if isinstance(payload.get("start_period"), int) else None,
+        dates=[str(value) for value in payload.get("dates") or [] if isinstance(value, str)],
     )
 
 
@@ -809,6 +1182,124 @@ def _validate_proposal(payload: dict, actor_name: str, role: str) -> tuple[Booki
         _approved_bookings(),
     )
     return proposal, result
+
+
+def _submission_proposal(submission: dict) -> BookingProposal:
+    return BookingProposal(
+        title=str(submission.get("title") or "Untitled request"),
+        requester=str(submission.get("requester") or ""),
+        role=str(submission.get("role") or "club"),
+        attendance=int(submission.get("attendance") or 0),
+        duration_periods=int(submission.get("duration_periods") or 0),
+        windows=list(submission.get("windows") or []),
+        room_types=list(submission.get("room_types") or []),
+        needs=list(submission.get("needs") or []),
+        requested_room=submission.get("room_id") or submission.get("requested_room"),
+        mandatory_for_groups=list(submission.get("mandatory_for_groups") or []),
+        raw_text=str(submission.get("raw_text") or ""),
+        requested_category=submission.get("requested_category"),
+        day=submission.get("day"),
+        start_period=submission.get("start_period"),
+        dates=[str(value) for value in submission.get("dates") or [] if isinstance(value, str)],
+    )
+
+
+def _official_request_from_submission(submission: dict) -> dict:
+    keys = (
+        "id",
+        "submitted_at",
+        "requester",
+        "role",
+        "department",
+        "requested_category",
+        "title",
+        "attendance",
+        "duration_periods",
+        "windows",
+        "room_types",
+        "needs",
+        "requested_room",
+        "mandatory_for_groups",
+        "series_id",
+        "raw_text",
+    )
+    return {key: submission[key] for key in keys if key in submission}
+
+
+def _append_approved_submission(submission: dict, reason: str, actor: str) -> None:
+    proposal = _submission_proposal(submission)
+    existing = _approved_bookings()
+    existing = [item for item in existing if item.get("request_id") != submission.get("id")]
+    result = validate_booking(
+        STATE["data"], STATE["placements"] or {}, proposal, existing
+    )
+    if not result["ok"]:
+        raise HTTPException(
+            status_code=422,
+            detail={"violations": result["violations"], "alternatives": result["alternatives"]},
+        )
+
+    raw = copy.deepcopy(STATE["raw"])
+    schedule = copy.deepcopy(STATE["schedule"])
+    decisions = copy.deepcopy(STATE["decisions"] or [])
+    approvals = copy.deepcopy(STATE["approvals"] or [])
+    official = _official_request_from_submission(submission)
+    if not any(item.get("id") == official["id"] for item in raw["booking_requests"]):
+        raw["booking_requests"].append(official)
+    decision = {
+        "request_id": official["id"],
+        "status": "approved",
+        "day": submission["day"],
+        "start_period": submission["start_period"],
+        "end_period": submission["end_period"],
+        "room_id": submission["room_id"],
+        "reason": reason,
+    }
+    decisions.append(decision)
+    schedule.setdefault("fest_week", {}).setdefault("bookings", []).append(decision)
+    approvals.append(
+        {
+            "request_id": official["id"],
+            "status": "approved",
+            "decided_by": actor,
+            "decided_role": "admin",
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+        }
+    )
+
+    data_path = STATE["data_path"]
+    schedule_path = API_EXPORTS / "schedule.json"
+    old_raw_text = data_path.read_text(encoding="utf-8") if data_path.exists() else None
+    old_schedule_text = schedule_path.read_text(encoding="utf-8") if schedule_path.exists() else None
+    try:
+        data_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        write_schedule(schedule_path, schedule)
+        report = _validate(data_path, schedule_path)
+        if report.get("hard_violation_count", 0):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "violations": report.get("hard_violations", []),
+                    "message": "approved booking would make the schedule invalid",
+                },
+            )
+        STATE.update(
+            raw=raw,
+            data=Data(raw),
+            schedule=schedule,
+            decisions=decisions,
+            approvals=approvals,
+            report=report,
+        )
+        store.save_dataset(raw, STATE["source"])
+        store.save_state(STATE)
+    except Exception:
+        if old_raw_text is not None:
+            data_path.write_text(old_raw_text, encoding="utf-8")
+        if old_schedule_text is not None:
+            schedule_path.write_text(old_schedule_text, encoding="utf-8")
+        raise
 
 
 @app.get("/api/assistant/status")
@@ -828,11 +1319,14 @@ def assistant_parse(payload: dict, x_demo_user: str = Header(default="debjeet"))
     if not isinstance(text, str) or len(text.strip()) < 5:
         raise HTTPException(status_code=422, detail="text is required")
     kind = payload.get("kind") or "booking"
+    previous = payload.get("previous_draft")
+    if not isinstance(previous, dict):
+        previous = None
     try:
         parsed = (
             parse_change_request(STATE["data"], text)
             if kind == "change"
-            else parse_booking_request(STATE["data"], text)
+            else parse_booking_request(STATE["data"], text, previous)
         )
     except AssistantUnavailable as error:
         raise HTTPException(
@@ -840,10 +1334,11 @@ def assistant_parse(payload: dict, x_demo_user: str = Header(default="debjeet"))
             detail={"message": str(error), "fallback": "manual"},
         ) from error
     return {
-        "source": "gemini",
+        "source": "local-rules" if parsed.model == "local-rules" else "gemini",
         "model": parsed.model,
         "draft": parsed.draft,
         "follow_up": parsed.follow_up,
+        "missing": parsed.missing,
     }
 
 
@@ -861,6 +1356,8 @@ def submit_booking_request(
     payload: dict, x_demo_user: str = Header(default="debjeet")
 ) -> dict:
     name, role = _actor(x_demo_user)
+    if STATE["placements"] is None:
+        raise HTTPException(status_code=409, detail="generate a schedule before submitting a booking")
     proposal, result = _validate_proposal(payload, name, role)
     if not result["ok"]:
         raise HTTPException(
@@ -871,6 +1368,18 @@ def submit_booking_request(
     request = proposal.as_official(
         STATE["data"], request_id, datetime.now(timezone.utc).isoformat()
     )
+    if proposal.day and proposal.start_period and proposal.requested_room:
+        request.update(
+            {
+                "day": proposal.day,
+                "start_period": proposal.start_period,
+                "end_period": proposal.start_period + proposal.duration_periods - 1,
+                "room_id": proposal.requested_room,
+            }
+        )
+    if proposal.dates:
+        request["dates"] = proposal.dates
+        request["weeks"] = weeks_for_dates(derive_semester(STATE["raw"]), proposal.dates)
     store.save_submission(request)
     return {"ok": True, "status": "pending", "request": request}
 
@@ -889,13 +1398,20 @@ def decide_booking_request(
     request_id: str, payload: dict, x_demo_user: str = Header(default="debjeet")
 ) -> dict:
     name, role = _actor(x_demo_user)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
     submission = store.get_submission(request_id)
     if submission is None:
         raise HTTPException(status_code=404, detail="unknown request")
     if submission.get("status") != "pending":
         raise HTTPException(status_code=409, detail="request already decided")
+    if role not in ("admin", "department_coordinator"):
+        raise HTTPException(status_code=403, detail="Admin or owning department coordinator only")
+    if role == "department_coordinator":
+        room_id = submission.get("room_id") or submission.get("requested_room")
+        if not _coordinator_can_decide_room(name, room_id):
+            raise HTTPException(
+                status_code=403,
+                detail="only the owning department coordinator may decide this venue",
+            )
     if str(submission.get("requester", "")).lower() == name.lower():
         raise HTTPException(status_code=403, detail="self-approval is not allowed")
     decision = payload.get("decision")
@@ -904,50 +1420,61 @@ def decide_booking_request(
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 3:
         raise HTTPException(status_code=422, detail="a reason is required")
-    store.decide_submission(request_id, decision, name, reason)
-
     if decision == "approved":
-        official = {
-            key: submission[key]
-            for key in (
-                "id",
-                "submitted_at",
-                "requester",
-                "role",
-                "department",
-                "requested_category",
-                "title",
-                "attendance",
-                "duration_periods",
-                "windows",
-                "room_types",
-                "needs",
-                "requested_room",
-                "mandatory_for_groups",
-                "series_id",
-                "raw_text",
-            )
-            if key in submission
-        }
-        if not any(item.get("id") == request_id for item in STATE["raw"]["booking_requests"]):
-            STATE["raw"]["booking_requests"].append(official)
-            store.save_dataset(STATE["raw"], STATE["source"])
-            STATE["data"] = Data(STATE["raw"])
-            STATE.update(
-                schedule=None,
-                placements=None,
-                report=None,
-                decisions=None,
-                approvals=None,
-                after=None,
-                after_report=None,
-                diff=None,
-                generated_at=None,
-                proposal_status=None,
-            )
-            store.clear_generation()
-            store.save_state(STATE)
+        _append_approved_submission(submission, reason, name)
+    store.decide_submission(request_id, decision, name, reason)
     return {"ok": True, "status": decision}
+
+
+def _cancel_approved_submission(submission: dict, reason: str, actor: str) -> None:
+    request_id = submission.get("id")
+    if not request_id or STATE["raw"] is None or STATE["schedule"] is None:
+        return
+    if not any(item.get("id") == request_id for item in STATE["raw"]["booking_requests"]):
+        return
+    raw = copy.deepcopy(STATE["raw"])
+    schedule = copy.deepcopy(STATE["schedule"])
+    decisions = copy.deepcopy(STATE["decisions"] or [])
+    cancellations = raw.setdefault("cancellations", [])
+    if not any(item.get("request_id") == request_id for item in cancellations):
+        cancellations.append(
+            {
+                "request_id": request_id,
+                "cancelled_at": datetime.now(timezone.utc).isoformat(),
+                "by": actor,
+                "note": reason,
+            }
+        )
+    for row in schedule.get("fest_week", {}).get("bookings", []):
+        if row.get("request_id") == request_id:
+            row.clear()
+            row.update({"request_id": request_id, "status": "rejected", "reason": reason})
+    for row in decisions:
+        if row.get("request_id") == request_id:
+            row.clear()
+            row.update({"request_id": request_id, "status": "rejected", "reason": reason})
+    data_path = STATE["data_path"]
+    schedule_path = API_EXPORTS / "schedule.json"
+    old_raw = data_path.read_text(encoding="utf-8") if data_path.exists() else None
+    old_schedule = schedule_path.read_text(encoding="utf-8") if schedule_path.exists() else None
+    try:
+        data_path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+        write_schedule(schedule_path, schedule)
+        report = _validate(data_path, schedule_path)
+        if report.get("hard_violation_count", 0):
+            raise HTTPException(
+                status_code=422,
+                detail={"violations": report.get("hard_violations", []), "message": "cancellation would invalidate the schedule"},
+            )
+        STATE.update(raw=raw, data=Data(raw), schedule=schedule, decisions=decisions, report=report)
+        store.save_dataset(raw, STATE["source"])
+        store.save_state(STATE)
+    except Exception:
+        if old_raw is not None:
+            data_path.write_text(old_raw, encoding="utf-8")
+        if old_schedule is not None:
+            schedule_path.write_text(old_schedule, encoding="utf-8")
+        raise
 
 
 @app.post("/api/bookings/{request_id}/cancel")
@@ -963,6 +1490,8 @@ def cancel_booking_request(
     if submission.get("status") not in ("pending", "approved", "alternative_offered"):
         raise HTTPException(status_code=409, detail=f"request is {submission.get('status')}")
     reason = str(payload.get("reason") or "cancelled by requester").strip()
+    if submission.get("status") in ("approved", "alternative_offered"):
+        _cancel_approved_submission(submission, reason, name)
     store.decide_submission(request_id, "cancelled", name, reason)
     return {"ok": True, "status": "cancelled", "request_id": request_id, "cancelled_by": name}
 
@@ -1048,6 +1577,28 @@ def create_change_request(payload: dict, x_demo_user: str = Header(default="debj
         parsed = parse_change_request(STATE["data"], text)
     except AssistantUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    alternatives: list[dict] = []
+    draft = parsed.draft
+    if (
+        draft.get("kind") == "move_session"
+        and draft.get("session_id")
+        and STATE["placements"]
+        and STATE["data"]
+    ):
+        session_id = draft["session_id"]
+        day = draft.get("day")
+        start = draft.get("start_period")
+        current = STATE["placements"].get(session_id)
+        room_id = draft.get("room_id") or (current[2] if current else None)
+        issues = (
+            validate_manual(STATE["data"], STATE["placements"], session_id, day, start, room_id)
+            if day and isinstance(start, int) and room_id
+            else ["Missing target day, start period or room"]
+        )
+        if issues:
+            alternatives = suggest_session_alternatives(
+                STATE["data"], STATE["placements"], session_id
+            )
     request_id = f"CHG-{int(datetime.now().timestamp() * 1000)}"
     record = {
         "id": request_id,
@@ -1056,6 +1607,7 @@ def create_change_request(payload: dict, x_demo_user: str = Header(default="debj
         "text": text.strip()[:4000],
         "draft": parsed.draft,
         "follow_up": parsed.follow_up,
+        "alternatives": alternatives,
         "model": parsed.model,
         "status": "pending",
         "submitted_at": datetime.now(timezone.utc).isoformat(),
@@ -1076,18 +1628,76 @@ def list_change_requests(x_demo_user: str = Header(default="debjeet")) -> dict:
     return {"items": items}
 
 
+def _apply_change_request(record: dict) -> None:
+    draft = record.get("draft") or {}
+    if draft.get("kind") != "move_session":
+        raise HTTPException(
+            status_code=409,
+            detail="only move_session requests can be applied here; use a disruption file for add/remove changes",
+        )
+    if STATE["schedule"] is None or STATE["placements"] is None:
+        raise HTTPException(status_code=409, detail="generate a schedule first")
+    session_id = draft.get("session_id")
+    day = draft.get("day")
+    start = draft.get("start_period")
+    if not session_id or day not in (STATE["data"].days if STATE["data"] else []) or not isinstance(start, int):
+        raise HTTPException(status_code=422, detail="a target session, valid day and start_period are required")
+    current = STATE["placements"].get(session_id)
+    room_id = draft.get("room_id") or (current[2] if current else None)
+    if not room_id:
+        raise HTTPException(status_code=422, detail="a room_id is required")
+    violations = validate_manual(
+        STATE["data"], STATE["placements"], session_id, day, start, room_id
+    )
+    if violations:
+        raise HTTPException(status_code=422, detail={"violations": violations})
+
+    schedule = copy.deepcopy(STATE["schedule"])
+    placements = copy.deepcopy(STATE["placements"])
+    for row in schedule.get("sessions", []):
+        if row.get("session_id") == session_id:
+            row.update(day=day, start_period=start, room_id=room_id)
+            break
+    placements[session_id] = (day, start, room_id)
+    schedule_path = API_EXPORTS / "schedule.json"
+    old_schedule = schedule_path.read_text(encoding="utf-8") if schedule_path.exists() else None
+    try:
+        write_schedule(schedule_path, schedule)
+        report = _validate(STATE["data_path"], schedule_path)
+        if report.get("hard_violation_count", 0):
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "violations": report.get("hard_violations", []),
+                    "message": "the requested move would make the schedule invalid",
+                },
+            )
+        STATE.update(schedule=schedule, placements=placements, report=report)
+        store.save_state(STATE)
+    except Exception:
+        if old_schedule is not None:
+            schedule_path.write_text(old_schedule, encoding="utf-8")
+        raise
+
+
 @app.post("/api/change-requests/{request_id}/decide")
 def decide_change_request(
     request_id: str, payload: dict, x_demo_user: str = Header(default="debjeet")
 ) -> dict:
     name, role = _actor(x_demo_user)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
     record = store.get_change_request(request_id)
     if record is None:
         raise HTTPException(status_code=404, detail="unknown change request")
     if record.get("status") != "pending":
         raise HTTPException(status_code=409, detail="request already decided")
+    if role not in ("admin", "department_coordinator"):
+        raise HTTPException(status_code=403, detail="Admin or owning department coordinator only")
+    session_id = (record.get("draft") or {}).get("session_id")
+    if role == "department_coordinator" and not _coordinator_can_decide_session(name, session_id):
+        raise HTTPException(
+            status_code=403,
+            detail="only the owning department coordinator may decide this session",
+        )
     if str(record.get("requester", "")).lower() == name.lower():
         raise HTTPException(status_code=403, detail="self-approval is not allowed")
     decision = payload.get("decision")
@@ -1096,13 +1706,15 @@ def decide_change_request(
         raise HTTPException(status_code=422, detail="decision must be approved or rejected")
     if len(reason) < 3:
         raise HTTPException(status_code=422, detail="a reason is required")
+    if decision == "approved" and STATE["schedule"] is not None and STATE["placements"] is not None:
+        _apply_change_request(record)
     store.decide_change_request(request_id, decision, name, reason)
     return {
         "ok": True,
         "status": decision,
         "request_id": request_id,
         "decided_by": name,
-        "note": "Approval records the decision; apply the move through the disruption/approval workflow.",
+        "note": "Approved move_session requests are applied to the current schedule.",
     }
 
 
@@ -1123,11 +1735,14 @@ def export_file(name: str) -> FileResponse:
 def reset(x_demo_user: str = Header(default="debjeet")) -> dict:
     _require_admin(x_demo_user)
     store.clear_generation()
-    for path in API_EXPORTS.glob("*"):
-        if path.is_file():
-            path.unlink()
+    store.clear_submissions()
+    store.clear_change_requests()
+    _clear_api_exports()
     _load_raw(json.loads(DEFAULT_DATA.read_text(encoding="utf-8")), "bundled")
-    return {"ok": True, "message": "dataset reloaded and generated artifacts cleared"}
+    return {
+        "ok": True,
+        "message": "dataset reloaded; generated artifacts, booking submissions and change requests cleared",
+    }
 
 
 @app.exception_handler(Exception)

@@ -123,6 +123,7 @@ export function buildOfficialView(dataset: DatasetInfo, schedule: ScheduleRespon
       startPeriod,
       periods: request?.duration_periods ?? 1,
       priority: toPriority(request?.requested_category ?? 'club_event'),
+      category: request?.requested_category,
       status,
       expectedAttendees: request?.attendance ?? 0,
       note: String(row.reason ?? decision?.reason ?? ''),

@@ -82,6 +82,17 @@ def main() -> int:
     print(f"policy: {policy.version} {list(policy.priority_order)}")
 
     EXPORTS.mkdir(exist_ok=True)
+    for name in (
+        "schedule.json",
+        "schedule_after.json",
+        "schedule.report.json",
+        "schedule_after.report.json",
+        "schedule_diff.json",
+        "booking_decisions.json",
+        "booking_decisions_after.json",
+    ):
+        (EXPORTS / name).unlink(missing_ok=True)
+        (ROOT / "public" / "exports" / name).unlink(missing_ok=True)
 
     weekly = solve_weekly(data, max_seconds=args.seconds)
     print(f"weekly: {weekly.status} {weekly.detail}")

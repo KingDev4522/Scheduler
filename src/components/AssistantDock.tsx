@@ -41,7 +41,7 @@ const ROUTES: { words: string[]; path: string }[] = [
   { words: ['approval', 'approvals', 'inbox'], path: '/approvals' },
   { words: ['admin', 'import', 'export'], path: '/admin' },
   { words: ['help'], path: '/help' },
-  { words: ['dashboard', 'home'], path: '/' },
+  { words: ['dashboard', 'home'], path: '/dashboard' },
 ]
 
 function recognitionCtor(): RecognitionCtor | null {
@@ -452,19 +452,30 @@ export function AssistantDock() {
           </motion.div>
         </motion.div>
       ) : (
-        <motion.button
+        <motion.div
           key="assistant-launcher"
-          type="button"
-          onClick={openOverlay}
-          aria-label="Open the assistant"
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
+          initial={{ opacity: 0, scale: 0.82, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.82, y: 12 }}
           transition={{ duration: reduceMotion ? 0 : 0.22, ease: 'easeOut' }}
-          className="fixed bottom-5 right-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-white shadow-lg transition-transform hover:scale-105"
+          className="pointer-events-none fixed inset-x-0 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-50 flex justify-center"
         >
-          <Sparkles className="h-5 w-5" aria-hidden />
-        </motion.button>
+          <div className="relative rounded-full bg-[#0f172a] p-0.5 shadow-[0_0_0_1px_rgba(148,163,184,0.45),0_0_20px_rgba(56,189,248,0.55),0_0_45px_rgba(139,92,246,0.28),0_10px_28px_rgba(15,23,42,0.35)]">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -inset-2 rounded-full bg-[radial-gradient(circle,rgba(56,189,248,0.28),transparent_68%)] blur-md"
+            />
+            <button
+              type="button"
+              onClick={openOverlay}
+              aria-label="Open the assistant"
+              title="Ask the assistant"
+              className="pointer-events-auto relative z-10 flex h-11 w-11 items-center justify-center rounded-full bg-[#0f172a] text-white ring-1 ring-white/15 transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
+            >
+              <Sparkles className="h-5 w-5 drop-shadow-[0_1px_4px_rgba(255,255,255,0.35)]" aria-hidden />
+            </button>
+          </div>
+        </motion.div>
       )}
     </AnimatePresence>
   )

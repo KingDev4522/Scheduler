@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarPlus, CheckCircle2, Plus } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
-import { EmptyState, ErrorState, LoadingState, StatusNotice } from '../components/States'
+import { EmptyState, ErrorState, StatusNotice } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
 import { BookingDraftForm, type BookingFormOptions } from '../components/BookingDraftForm'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
+import { canCoordinatorDecideRoom } from '../lib/departments'
+import { datasetDay, formatDate } from '../lib/semester'
 import {
   api,
   type BookingAlternative,
@@ -20,10 +23,27 @@ const EMPTY_DRAFT: BookingDraft = {
   attendance: 45,
   duration_periods: 2,
   windows: [{ day: 'MON', from_period: 10, to_period: 11 }],
+  dates: [],
   room_types: [],
   needs: [],
   requested_room: null,
   mandatory_for_groups: [],
+}
+
+function slotLabel(submission: BookingSubmission): string {
+  const dates = submission.dates ?? []
+  const weeks = submission.weeks ?? []
+  const time = `${submission.start_period ? `P${submission.start_period}` : '—'}–${
+    submission.end_period ? `P${submission.end_period}` : '—'
+  }`
+  const day = submission.day ?? ''
+  if (dates.length === 0) {
+    return `${day} ${time}`
+  }
+  const first = dates[0]
+  const week = weeks[0]
+  const more = dates.length > 1 ? ` +${dates.length - 1}` : ''
+  return `${week ? `W${week} · ` : ''}${formatDate(first)}${more} · ${day} ${time}`
 }
 
 export default function ManualBooking() {
@@ -45,6 +65,7 @@ export default function ManualBooking() {
       needs: Array.from(new Set(rooms.flatMap((room) => room.features))).concat('accessible').sort(),
       groups: official.dataset.entities.student_groups.map((group) => group.id),
       rooms: rooms.map((room) => ({ id: room.id, name: room.name })),
+      semester: official.dataset.semester ?? null,
     }
   }, [official.dataset])
 
@@ -84,10 +105,23 @@ export default function ManualBooking() {
       day: alternative.day,
       start_period: alternative.start_period,
     }
+    const nextDraft = {
+      ...draft,
+      dates: (draft.dates ?? []).filter((iso) => datasetDay(iso) === alternative.day),
+      duration_periods: alternative.end_period - alternative.start_period + 1,
+      windows: [
+        {
+          day: alternative.day,
+          from_period: alternative.start_period,
+          to_period: alternative.end_period,
+        },
+      ],
+    }
+    setDraft(nextDraft)
     setTarget(chosen)
     setBusy(true)
     try {
-      setValidation(await api.validateBooking({ ...draft, ...chosen }, user.username))
+      setValidation(await api.validateBooking({ ...nextDraft, ...chosen }, user.username))
     } finally {
       setBusy(false)
     }
@@ -126,12 +160,7 @@ export default function ManualBooking() {
   }
 
   if (official.loading && !official.dataset) {
-    return (
-      <div>
-        <PageHeader title="Manual booking" subtitle="Validated without AI." />
-        <LoadingState label="Loading the official dataset…" />
-      </div>
-    )
+    return <PageSkeleton label="Loading the official dataset…" variant="form" rows={4} />
   }
 
   if (!official.dataset || !options) {
@@ -148,7 +177,7 @@ export default function ManualBooking() {
   }
 
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="Manual booking"
         subtitle="Submit a venue request without AI. Every slot is checked against the official timetable and rules before submission."
@@ -156,7 +185,7 @@ export default function ManualBooking() {
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
+      <section className="cit-card rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex items-center justify-between">
           <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
             <Plus className="h-4 w-4" aria-hidden /> New request
@@ -201,7 +230,7 @@ export default function ManualBooking() {
         </div>
 
         {validation && (
-          <div className="mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+          <div className="cit-anim-pop mt-4 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
             <p className="text-xs font-semibold text-neutral-800">
               {validation.ok ? 'All hard checks pass' : 'Deterministic checks'}
             </p>
@@ -241,7 +270,7 @@ export default function ManualBooking() {
         )}
       </section>
 
-      <section className="mt-5 rounded-xl border border-neutral-200 bg-white p-5">
+      <section className="cit-card mt-5 rounded-xl border border-neutral-200 bg-white p-5">
         <h3 className="text-sm font-semibold text-neutral-900">
           {user.role === 'admin' || user.role === 'department_coordinator' ? 'Requests' : 'My requests'}
         </h3>
@@ -266,7 +295,7 @@ export default function ManualBooking() {
                   <th className="px-3 py-2 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="cit-stagger-rows divide-y divide-neutral-100">
                 {submissions.map((submission) => (
                   <tr key={submission.id}>
                     <td className="px-3 py-2">
@@ -275,13 +304,19 @@ export default function ManualBooking() {
                     </td>
                     <td className="px-3 py-2 text-xs text-neutral-600">{submission.requester}</td>
                     <td className="px-3 py-2 text-xs text-neutral-600">
-                      {submission.room_id ?? '—'} · {submission.day ?? '—'} P
-                      {submission.start_period ?? '—'}–P{submission.end_period ?? '—'}
+                      <p className="font-medium text-neutral-700">{submission.room_id ?? '—'}</p>
+                      <p>{slotLabel(submission)}</p>
                     </td>
                     <td className="px-3 py-2 text-xs capitalize text-neutral-700">{submission.status}</td>
                     <td className="px-3 py-2 text-xs text-neutral-600">{submission.reason ?? '—'}</td>
                     <td className="px-3 py-2 text-right">
-                      {submission.status === 'pending' && user.role === 'admin' ? (
+                      {submission.status === 'pending' &&
+                      (user.role === 'admin' ||
+                        (user.role === 'department_coordinator' &&
+                          canCoordinatorDecideRoom(
+                            user,
+                            String(submission.room_id ?? submission.requested_room ?? ''),
+                          ))) ? (
                         <div className="flex justify-end gap-2">
                           <button
                             type="button"

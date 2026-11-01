@@ -47,7 +47,7 @@ export interface NavItem {
 
 /** Single source of truth: sidebar rendering + route table + access control. */
 export const NAV: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview', roles: ALL, element: <Dashboard /> },
+  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview', roles: ALL, element: <Dashboard /> },
   { path: '/timetables', label: 'Timetables', icon: CalendarRange, group: 'Scheduling', roles: ALL, element: <Timetables /> },
   { path: '/official', label: 'Official Data', icon: CalendarDays, group: 'Scheduling', roles: ALL, element: <OfficialData /> },
   { path: '/rooms', label: 'Rooms', icon: DoorOpen, group: 'Scheduling', roles: ALL, element: <Rooms /> },

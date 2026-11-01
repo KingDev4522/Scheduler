@@ -8,14 +8,14 @@ gsap.registerPlugin(ScrollTrigger)
 
 /*
  * HERO - "The Interval" (editorial composition)
- * The halftone hands plate is the focal point. Typography lives in the
- * lower-left negative space (~40% width) and never touches the fingertips,
- * which sit near the visual center in open black void.
+ * The halftone plate is the focal point. Typography lives in the
+ * lower-left negative space (~40% width) and never touches the
+ * focal point, which sits near the visual centre in open black void.
  *
- * Reading path: top micro-label → headline → fingertips → copy → CTA.
+ * Reading path: top micro-label → headline → plate → copy → CTA.
  *
  * VIDEO-READY - to replace the photo with your soft-settle video:
- *   1. Drop the file into `signspeak-landing/public/` as:
+ *   1. Drop the file into `public/` as:
  *        hero-settle.mp4  (preferred, h264 + faststart)
  *        hero-settle.webm  (optional, smaller)
  *   2. Done. No code change needed - the <video> below auto-detects it,
@@ -160,31 +160,32 @@ export default function Hero({ start = true }) {
 
             <h1 className="max-w-[32rem] font-display text-[clamp(2.1rem,9.5vw,2.6rem)] font-semibold leading-[1.04] tracking-[-0.032em] text-neutral-50 md:text-[clamp(2.3rem,4.2vw,3.7rem)]">
               <span className="-mb-[0.09em] block overflow-hidden pb-[0.09em]">
-                <span className="hero-line-inner block">Where hands</span>
+                <span className="hero-line-inner block">Where classes,</span>
               </span>
               <span className="-mb-[0.12em] block overflow-hidden pb-[0.12em]">
                 <span className="hero-line-inner block pl-[1em] font-serif-aesthetic text-[1.07em] font-normal italic leading-[1] tracking-[-0.008em] text-amber-100">
-                  almost touch,
+                  exams and events
                 </span>
               </span>
               <span className="-mb-[0.09em] block overflow-hidden pb-[0.09em]">
                 <span className="hero-line-inner block font-medium">
-                  meaning begins<span className="text-amber-200">.</span>
+                  finally agree<span className="text-amber-200">.</span>
                 </span>
               </span>
             </h1>
 
             <p className="hero-fade mt-5 max-w-[400px] pb-2 text-[13.5px] font-light leading-[1.85] tracking-[0.005em] text-neutral-300 md:mt-7 md:text-[14px]">
-              An on-device interpreter that turns Indian Sign Language into
-              spoken words. Nothing ever leaves your device.
+              The scheduling platform for Chilika Institute of Technology (CIT).
+              189 weekly sessions, 41 midsem exams and 25 Spectra requests,
+              solved together with zero hard conflicts.
             </p>
 
             <div className="hero-fade mt-6 flex flex-wrap items-center gap-4 md:mt-8">
               <Link
-                to="/interpret"
+                to="/login"
                 className="group inline-flex items-center gap-2 rounded-full bg-amber-200 px-6 py-3 text-[13.5px] font-semibold text-black transition-colors duration-300 hover:bg-amber-100"
               >
-                Launch Studio
+                Open the scheduler
                 <span aria-hidden="true" className="transition-transform duration-300 group-hover:-translate-y-px group-hover:translate-x-px">↗</span>
               </Link>
               <Link
@@ -196,7 +197,7 @@ export default function Hero({ start = true }) {
               </Link>
             </div>
           </div>
-          {/* Right columns intentionally empty - fingertips stay unobstructed */}
+          {/* Right columns intentionally empty - the plate stays unobstructed */}
           <div className="hidden lg:col-span-7 lg:block" aria-hidden="true" />
         </div>
       </div>

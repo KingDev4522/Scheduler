@@ -3,7 +3,7 @@ import { gsap } from 'gsap'
 
 /*
  * PRELOADER - smooth cinematic boot for the landing page.
- * Real logo artwork floating over a breathing ambient aura, SIGNSPEAK
+ * Real logo artwork floating over a breathing ambient aura, SCHEDULER
  * wordmark rising letter-by-letter (blur → sharp), live percentage
  * counter, crossfading status line, hairline gradient progress track.
  * Exits as a soft curtain lift (black over an amber trailing edge) and
@@ -13,13 +13,13 @@ import { gsap } from 'gsap'
  */
 
 const STATUS_LINES = [
-  'CALIBRATING OPTICS',
-  'LOADING VOCABULARY',
-  'TUNING AVATAR',
-  'OPENING THE INTERVAL',
+  'LOADING CIT DATASET',
+  'COUNTING 189 SESSIONS',
+  'PLACING 41 EXAMS',
+  'SCORING 25 REQUESTS',
 ]
 
-const WORD = 'SIGNSPEAK'
+const WORD = 'SCHEDULER'
 
 export default function Preloader({ onDone }) {
   const rootRef = useRef(null)
@@ -173,7 +173,7 @@ export default function Preloader({ onDone }) {
       ref={rootRef}
       role="status"
       aria-live="polite"
-      aria-label="Loading SignSpeak"
+      aria-label="Loading CIT Scheduler"
       className="fixed inset-0 z-[100] overflow-hidden bg-black"
     >
       {/* Curtain stack - amber trails the black panel on exit */}
@@ -190,17 +190,17 @@ export default function Preloader({ onDone }) {
         {/* Top row */}
         <div className="pre-meta absolute left-0 right-0 top-0 flex items-center justify-between px-6 pt-6 md:px-10 md:pt-8">
           <span className="font-mono-tech text-[10.5px] uppercase tracking-[0.24em] text-neutral-500">
-            On-device ISL
+            CIT · Chilika Institute
           </span>
           <span className="font-mono-tech text-[10.5px] uppercase tracking-[0.24em] text-neutral-500">
-            Est. 2026
+            Week 7
           </span>
         </div>
 
         {/* Logo */}
         <img
           src="/logo-nav.png"
-          alt="SignSpeak"
+          alt="CIT Scheduler"
           width="88"
           height="88"
           draggable={false}
@@ -218,7 +218,7 @@ export default function Preloader({ onDone }) {
           </p>
         </div>
         <p className="pre-meta mt-4 font-mono-tech text-[10.5px] uppercase tracking-[0.3em] text-amber-200/80">
-          Camera to spoken sentence
+          Conflict-free by construction
         </p>
 
         {/* Bottom row: status + counter */}

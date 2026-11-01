@@ -6,9 +6,13 @@ services:
       - "8000:8000"
     environment:
       DATABASE_PATH: /data/state.sqlite3
-      CORS_ORIGINS: "*"
+      CORS_ORIGINS: http://localhost:8000
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_MODELS: ${GEMINI_MODELS:-gemini-2.5-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3.8-flash}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-1234}
+      ALLOW_DEMO_HEADER: "0"
     volumes:
       - cit-data:/data
     restart: unless-stopped

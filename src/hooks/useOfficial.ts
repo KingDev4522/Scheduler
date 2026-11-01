@@ -23,12 +23,12 @@ export interface OfficialState {
   generateResult: GenerateResult | null
   disruptionResult: DisruptionResult | null
   refresh: () => Promise<void>
-  generate: () => Promise<void>
+  generate: () => Promise<GenerateResult | null>
   reset: () => Promise<void>
-  approveProposal: () => Promise<void>
-  rejectProposal: () => Promise<void>
-  uploadDataset: (file: File) => Promise<void>
-  uploadDisruption: (file: File) => Promise<void>
+  approveProposal: () => Promise<boolean>
+  rejectProposal: () => Promise<boolean>
+  uploadDataset: (file: File) => Promise<DatasetInfo | null>
+  uploadDisruption: (file: File) => Promise<DisruptionResult | null>
   setPriorityOrder: (order: string[]) => Promise<void>
 }
 
@@ -80,13 +80,22 @@ export function useOfficial(): OfficialState {
     }
   }
 
-  const generate = () =>
-    run(async () => {
+  const generate = async (): Promise<GenerateResult | null> => {
+    setBusy(true)
+    setError(null)
+    try {
       const result = await api.generate(actor)
       setGenerateResult(result)
       setDisruptionResult(null)
       await refresh()
-    })
+      return result
+    } catch (caught) {
+      setError(messageOf(caught))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const reset = () =>
     run(async () => {
@@ -96,18 +105,36 @@ export function useOfficial(): OfficialState {
       await refresh()
     })
 
-  const approveProposal = () =>
-    run(async () => {
+  const approveProposal = async (): Promise<boolean> => {
+    setBusy(true)
+    setError(null)
+    try {
       await api.approveProposal(actor)
       await refresh()
-    })
+      return true
+    } catch (caught) {
+      setError(messageOf(caught))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  const rejectProposal = () =>
-    run(async () => {
+  const rejectProposal = async (): Promise<boolean> => {
+    setBusy(true)
+    setError(null)
+    try {
       await api.rejectProposal(actor)
       setDisruptionResult(null)
       await refresh()
-    })
+      return true
+    } catch (caught) {
+      setError(messageOf(caught))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const setPriorityOrder = (order: string[]) =>
     run(async () => {
@@ -117,20 +144,38 @@ export function useOfficial(): OfficialState {
       await refresh()
     })
 
-  const uploadDataset = (file: File) =>
-    run(async () => {
-      await api.importDataset(file, actor)
+  const uploadDataset = async (file: File): Promise<DatasetInfo | null> => {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await api.importDataset(file, actor)
       setGenerateResult(null)
       setDisruptionResult(null)
       await refresh()
-    })
+      return result
+    } catch (caught) {
+      setError(messageOf(caught))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  const uploadDisruption = (file: File) =>
-    run(async () => {
+  const uploadDisruption = async (file: File): Promise<DisruptionResult | null> => {
+    setBusy(true)
+    setError(null)
+    try {
       const result = await api.disruption(file, actor)
       setDisruptionResult(result)
       await refresh()
-    })
+      return result
+    } catch (caught) {
+      setError(messageOf(caught))
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return {
     health,

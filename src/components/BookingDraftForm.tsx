@@ -1,4 +1,19 @@
+import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { BookingDraft, BookingWindow } from '../lib/api'
+import { PERIOD_TIMES } from '../lib/time'
+import { SOFT_EASE } from '../lib/motion'
+import type { Semester } from '../lib/semester'
+import {
+  dateToWeek,
+  datasetDay,
+  endTimeOptions,
+  formatDate,
+  resolveWindow,
+  startTimeOptions,
+  timeFromPeriod,
+} from '../lib/semester'
+import { DatePickerCalendar } from './DatePickerCalendar'
 
 export interface BookingFormOptions {
   days: string[]
@@ -6,10 +21,26 @@ export interface BookingFormOptions {
   needs: string[]
   groups: string[]
   rooms: { id: string; name: string }[]
+  semester: Semester | null
 }
 
 function toggle(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
+}
+
+/** One dataset window per distinct weekday; the dataset has no week dimension. */
+function buildWindows(dates: string[], fromPeriod: number, toPeriod: number): BookingWindow[] {
+  const seen = new Set<string>()
+  const out: BookingWindow[] = []
+  for (const iso of dates) {
+    const day = datasetDay(iso)
+    if (!day) continue
+    const key = `${day}:${fromPeriod}-${toPeriod}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ day, from_period: fromPeriod, to_period: toPeriod })
+  }
+  return out
 }
 
 export function BookingDraftForm({
@@ -24,21 +55,45 @@ export function BookingDraftForm({
   const update = <K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) =>
     onChange({ ...draft, [key]: value })
 
-  const updateWindow = (index: number, patch: Partial<BookingWindow>) => {
-    const windows = draft.windows.map((window, position) =>
-      position === index ? { ...window, ...patch } : window,
-    )
-    update('windows', windows)
+  const dates = draft.dates ?? []
+  const firstWindow = draft.windows[0]
+  const [startTime, setStartTime] = useState(timeFromPeriod(firstWindow?.from_period ?? 10))
+  const [endTime, setEndTime] = useState(PERIOD_TIMES[firstWindow?.to_period ?? 11]?.end ?? '20:00')
+  const [timeError, setTimeError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const window = draft.windows[0]
+    if (!window) return
+    setStartTime(timeFromPeriod(window.from_period))
+    setEndTime(PERIOD_TIMES[window.to_period]?.end ?? '')
+    setTimeError(null)
+  }, [draft.windows])
+
+  const resolved = resolveWindow(startTime, endTime)
+  const fromPeriod = resolved.error ? firstWindow?.from_period ?? 10 : resolved.from_period
+  const toPeriod = resolved.error ? firstWindow?.to_period ?? 11 : resolved.to_period
+
+  const setDates = (next: string[]) => {
+    onChange({
+      ...draft,
+      dates: next,
+      windows: buildWindows(next, fromPeriod, toPeriod),
+      duration_periods: toPeriod - fromPeriod + 1,
+    })
   }
 
-  const addWindow = () =>
-    update('windows', [
-      ...draft.windows,
-      { day: options.days[0] ?? 'MON', from_period: 10, to_period: 11 },
-    ])
-
-  const removeWindow = (index: number) =>
-    update('windows', draft.windows.filter((_, position) => position !== index))
+  const setTimes = (nextStart: string, nextEnd: string) => {
+    setStartTime(nextStart)
+    setEndTime(nextEnd)
+    const result = resolveWindow(nextStart, nextEnd)
+    setTimeError(result.error ?? null)
+    if (result.error) return
+    onChange({
+      ...draft,
+      windows: buildWindows(dates, result.from_period, result.to_period),
+      duration_periods: result.duration,
+    })
+  }
 
   return (
     <div className="space-y-4">
@@ -69,89 +124,94 @@ export function BookingDraftForm({
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
           />
         </div>
-        <div>
-          <label htmlFor="booking-duration" className="mb-1 block text-xs font-medium text-neutral-600">
-            Duration (periods)
-          </label>
-          <input
-            id="booking-duration"
-            type="number"
-            min={1}
-            max={13}
-            value={draft.duration_periods ?? ''}
-            onChange={(event) =>
-              update('duration_periods', event.target.value === '' ? null : Number(event.target.value))
-            }
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
-          />
-        </div>
       </div>
 
       <fieldset>
-        <legend className="mb-2 text-xs font-medium text-neutral-600">Requested windows</legend>
-        <div className="space-y-2">
-          {draft.windows.map((window, index) => (
-            <div key={index} className="flex flex-wrap items-end gap-2">
-              <div>
-                <label className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
-                  Day
-                </label>
-                <select
-                  value={window.day}
-                  onChange={(event) => updateWindow(index, { day: event.target.value })}
-                  className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
-                >
-                  {options.days.map((day) => (
-                    <option key={day} value={day}>
-                      {day}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
-                  From
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={13}
-                  value={window.from_period}
-                  onChange={(event) => updateWindow(index, { from_period: Number(event.target.value) })}
-                  className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
-                  To
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={13}
-                  value={window.to_period}
-                  onChange={(event) => updateWindow(index, { to_period: Number(event.target.value) })}
-                  className="w-20 rounded-lg border border-neutral-300 px-2 py-1.5 text-sm"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => removeWindow(index)}
-                className="rounded-lg border border-neutral-300 px-2.5 py-1.5 text-xs font-semibold text-neutral-600"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addWindow}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700"
-          >
-            Add window
-          </button>
-        </div>
+        <legend className="mb-1 text-xs font-medium text-neutral-600">Date(s)</legend>
+        <p className="mb-2 text-[11px] text-neutral-500">
+          Pick one or more days. Only upcoming weekdays in the semester weeks are allowed; the exam
+          week is closed. Each date resolves to its weekday and week number.
+        </p>
+        <DatePickerCalendar semester={options.semester} dates={dates} onChange={setDates} />
       </fieldset>
+
+      <fieldset>
+        <legend className="mb-1 text-xs font-medium text-neutral-600">Time</legend>
+        <p className="mb-2 text-[11px] text-neutral-500">
+          One period = one hour. The period range and duration are derived from these times — no
+          separate duration field.
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label htmlFor="booking-start" className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
+              From
+            </label>
+            <select
+              id="booking-start"
+              value={startTime}
+              onChange={(event) => setTimes(event.target.value, endTime)}
+              className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {startTimeOptions().map((time) => (
+                <option key={time} value={time}>
+                  {time}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="booking-end" className="mb-1 block text-[10px] uppercase tracking-wide text-neutral-500">
+              To
+            </label>
+            <select
+              id="booking-end"
+              value={endTime}
+              onChange={(event) => setTimes(startTime, event.target.value)}
+              className="rounded-lg border border-neutral-300 bg-white px-2.5 py-1.5 text-sm"
+            >
+              {endTimeOptions().map((time) => (
+                <option key={time} value={time}>
+                  {time}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!resolved.error && (
+            <p className="pb-1.5 text-xs font-semibold text-slate-700">
+              P{resolved.from_period}–P{resolved.to_period} · {resolved.duration} period
+              {resolved.duration === 1 ? '' : 's'} · {startTime}–{endTime}
+            </p>
+          )}
+        </div>
+        {timeError && <p className="mt-1 text-xs text-rose-700">{timeError}</p>}
+      </fieldset>
+
+      {dates.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Resolved for {dates.length} date{dates.length === 1 ? '' : 's'}
+          </p>
+          <ul className="mt-1 space-y-0.5 text-xs text-slate-700">
+            {dates.map((iso) => {
+              const day = datasetDay(iso)
+              const week = options.semester ? dateToWeek(options.semester, iso) : null
+              return (
+                <li key={iso}>
+                  <span className="font-semibold">{formatDate(iso)}</span>
+                  {week ? ` · Week ${week.number} (${week.phase})` : ''}
+                  {day ? ` · ${day}` : ''} · P{fromPeriod}–P{toPeriod}
+                </li>
+              )
+            })}
+          </ul>
+          {draft.windows.length !== dates.length && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {dates.length} date(s) → {draft.windows.length} weekday window(s); the dataset schedules
+              per weekday, so repeated weekdays map to one window.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <fieldset>
@@ -232,6 +292,20 @@ export function BookingDraftForm({
           </select>
         </div>
       </div>
+
+      <AnimatePresence>
+        {draft.windows.length > 0 && (
+          <motion.p
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.24, ease: SOFT_EASE }}
+            className="text-[11px] text-neutral-500"
+          >
+            Requested windows: {draft.windows.map((window) => `${window.day} P${window.from_period}–P${window.to_period}`).join(' · ')}
+          </motion.p>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -1,8 +1,8 @@
 /*
- * Single source of truth for every route in the app.
+ * Single source of truth for every route in the landing site.
  *
- * Rules the whole app follows:
- * 1. Clean, absolute paths only ("/interpret"). No "#/route" hash routing.
+ * Rules the whole landing site follows:
+ * 1. Clean, absolute paths only ("/timetables"). No "#/route" hash routing.
  * 2. No hash fragments in the URL. Landing sections get their own real
  *    routes ("/engine") and are resolved to a DOM id on arrival.
  * 3. Exactly one trailing slash, and only on "/" itself. Anything else
@@ -19,12 +19,12 @@ export function normalizePath(pathname) {
   return trimmed === "" ? "/" : trimmed;
 }
 
-/* Auth-protected studio pages, in nav order. */
+/* Signed-in scheduler pages, in nav order. */
 export const STUDIO_ROUTES = [
-  { path: "/interpret", label: "Interpret" },
-  { path: "/translate", label: "Translate" },
-  { path: "/record", label: "Record" },
-  { path: "/delete", label: "Review" },
+  { path: "/timetables", label: "Timetables" },
+  { path: "/exams", label: "Exams" },
+  { path: "/bookings", label: "Bookings" },
+  { path: "/approvals", label: "Approvals" },
 ];
 
 const STUDIO_PATHS = STUDIO_ROUTES.map((route) => route.path);
@@ -41,8 +41,8 @@ export function isStudioPath(pathname) {
 export const LANDING_SECTIONS = [
   { path: "/how", label: "How it works", id: "how" },
   { path: "/pipeline", label: "Pipeline", id: "pipeline" },
-  { path: "/engine", label: "Engine", id: "engine" },
-  { path: "/showcase", label: "Field frames", id: "showcase" },
+  { path: "/engine", label: "Validation", id: "engine" },
+  { path: "/showcase", label: "Evidence", id: "showcase" },
   { path: "/get-started", label: "Get started", id: "translation" },
 ];
 
@@ -61,21 +61,7 @@ export const ROUTE_ALIASES = [
   { from: "/home", to: "/" },
   { from: "/index", to: "/" },
   { from: "/landing", to: "/" },
-  { from: "/review", to: "/delete" },
   { from: "/signup", to: "/login" },
   { from: "/signin", to: "/login" },
   { from: "/auth/login", to: "/login" },
 ];
-
-/*
- * Where Supabase sends the user back after a magic link or Google OAuth. Both
- * providers answer with "?code=...", which this route exchanges for a session
- * and then replaces with the studio, so the code never survives in the URL.
- * Must be listed in the Supabase dashboard under Authentication > URL
- * Configuration > Redirect URLs, alongside each deployed origin.
- */
-export const AUTH_CALLBACK_PATH = "/auth/callback";
-
-export function authCallbackUrl() {
-  return `${window.location.origin}${AUTH_CALLBACK_PATH}`;
-}

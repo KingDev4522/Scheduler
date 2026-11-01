@@ -75,6 +75,8 @@ export interface Booking {
   periods: number
   /** 1 = institute event, 2 = department/guest, 3 = club event. */
   priority: BookingPriority
+  /** Raw requested category from the official dataset (e.g. institute_event). */
+  category?: string
   status: BookingStatus
   expectedAttendees: number
   note: string

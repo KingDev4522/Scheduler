@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: cit-scheduler
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_PATH
+        value: /data/state.sqlite3
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_MODELS
+        value: gemini-2.5-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3.8-flash
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DEMO_PASSWORD
+        value: "1234"
+      - key: ALLOW_DEMO_HEADER
+        value: "0"
+    disk:
+      name: cit-data
+      mountPath: /data
+      sizeGB: 1

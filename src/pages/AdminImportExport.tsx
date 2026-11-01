@@ -14,7 +14,7 @@ import { OfficialBackendPanel } from '../components/OfficialBackendPanel'
  */
 export default function AdminImportExport() {
   return (
-    <div>
+    <div className="cit-page">
       <PageHeader
         title="Import / exports"
         subtitle="The official FastAPI + CP-SAT workflow. Generate the timetable, exams and Spectra decisions, then inspect them in Official Data."
@@ -22,12 +22,12 @@ export default function AdminImportExport() {
 
       <OfficialBackendPanel />
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="cit-card rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
           <ShieldCheck className="h-4 w-4 text-neutral-700" aria-hidden />
           How this page works
         </h3>
-        <ol className="mt-3 space-y-2 text-sm text-slate-600">
+        <ol className="cit-stagger mt-3 space-y-2 text-sm text-slate-600">
           <li>
             <span className="font-semibold text-slate-800">1. Upload dataset</span> — optional. The
             bundled <code className="rounded bg-slate-100 px-1">cit_public.json</code> is already
@@ -39,8 +39,10 @@ export default function AdminImportExport() {
             validator.
           </li>
           <li>
-            <span className="font-semibold text-slate-800">3. Apply disruption</span> — upload a
-            change file, review the minimal-move diff, then approve it in Approvals or Official Data.
+            <span className="font-semibold text-slate-800">3. Apply disruption</span> — build a
+            change in <Link to="/changes" className="font-semibold text-neutral-900">Change proposals</Link>{' '}
+            or upload a change file, review the diff, then approve it in{' '}
+            <Link to="/approvals" className="font-semibold text-neutral-900">Approvals</Link>.
           </li>
           <li>
             <span className="font-semibold text-slate-800">4. Download exports</span> —{' '}
@@ -49,7 +51,7 @@ export default function AdminImportExport() {
           </li>
           <li>
             <span className="font-semibold text-slate-800">Reset backend</span> — reloads the
-            bundled dataset and clears generated artifacts.
+            bundled dataset and clears generated artifacts, booking submissions and change requests.
           </li>
         </ol>
 

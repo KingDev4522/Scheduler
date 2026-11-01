@@ -60,6 +60,9 @@ STATE_FIELDS = (
     "decisions",
     "approvals",
     "after",
+    "after_placements",
+    "after_decisions",
+    "after_approvals",
     "after_report",
     "diff",
     "generated_at",
@@ -142,6 +145,16 @@ def load_state() -> dict[str, Any]:
 def clear_generation() -> None:
     with _db() as conn:
         conn.execute("DELETE FROM generation WHERE id = 1")
+
+
+def clear_submissions() -> None:
+    with _db() as conn:
+        conn.execute("DELETE FROM booking_submissions")
+
+
+def clear_change_requests() -> None:
+    with _db() as conn:
+        conn.execute("DELETE FROM change_requests")
 
 
 def save_submission(request: dict[str, Any]) -> None:

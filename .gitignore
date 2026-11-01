@@ -33,7 +33,12 @@ target/
 # Backend runtime state
 backend/*.sqlite3
 backend/*.sqlite3-*
+backend/tests/*.sqlite3
 exports/api/
+
+# Local development tooling
+.freebuff/
+.pytest_cache/
 
 # Agent skills & design tooling (local only, never commit)
 .agents/

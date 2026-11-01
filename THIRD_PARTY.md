@@ -15,6 +15,10 @@ Required by the problem statement (`12_DEPLOYMENT_SUBMISSION_PRD.md`). Listed fr
 | `clsx` | ^2.1.1 | Conditional class names | MIT |
 | `tailwind-merge` | ^3.7.0 | Tailwind class merging | MIT |
 | `framer-motion` | ^14.9.0 | UI motion | MIT |
+| `gsap` | ^3.15.0 | Landing-page scroll choreography | Standard GSAP license |
+| `lenis` | ^1.3.26 | Smooth scrolling on the landing page | MIT |
+| `metal-fx` | ^2.0.11 | WebGL liquid-metal assistant launcher (Libraries.dev) | MIT |
+| `border-beam` | ^1.4.1 | Animated login-card border beam (Libraries.dev) | MIT |
 | `tw-animate-css` | ^1.4.0 | Tailwind animation utilities | MIT |
 | `tailwindcss`, `@tailwindcss/vite` | ^4.3.3 | Styling | MIT |
 | `vite`, `@vitejs/plugin-react` | ^8.3.5 / ^6.1.2 | Build tooling | MIT |
@@ -28,6 +32,10 @@ No purchased templates or third-party UI kits beyond the MIT/Apache libraries ab
 (<https://bencho.dev/licence>). Comments are preserved; React event typing and responsive canvas
 sizing were adapted for this project.
 
+The `design-taste-frontend` development skill (`skills-lock.json`, source `Leonxlnx/taste-skill`)
+was used as a visual-direction reference during the landing-page work. It is development tooling,
+not a runtime dependency of the Scheduler.
+
 ## 2. Engine and backend (Python)
 
 | Package / service | Version | Purpose | License / terms |
@@ -40,7 +48,7 @@ sizing were adapted for this project.
 | `httpx` | >= 0.27 | Gemini HTTP client + API tests | BSD-3-Clause |
 | `pydantic` | via FastAPI | Draft schema validation | MIT |
 | `pytest` | >= 8.0 | Backend tests | MIT |
-| **Google Gemini API** | `gemini-3.6-flash` | Natural-language request extraction (server-side) | Google Gemini API terms; key not committed |
+| **Google Gemini API** | `gemini-2.5-flash` | Natural-language request extraction (server-side) | Google Gemini API terms; key not committed |
 
 Python standard library (3.8+) provides JSON, CLI, SQLite and `unittest`.
 

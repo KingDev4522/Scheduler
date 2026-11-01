@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -91,6 +92,12 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(() => restoreSession())
+
+  useEffect(() => {
+    const expire = () => setUser(null)
+    window.addEventListener('cit-auth-expired', expire)
+    return () => window.removeEventListener('cit-auth-expired', expire)
+  }, [])
 
   const login = useCallback(
     async (username: string, password: string): Promise<LoginResult> => {

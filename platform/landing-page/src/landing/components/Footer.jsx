@@ -4,7 +4,7 @@ import { LANDING_SECTIONS, STUDIO_ROUTES } from '../../lib/routes'
 
 /*
  * FOOTER - top row holds the brand mark plus link columns; below it a big
- * full-bleed space carries a giant textured SIGNSPEAK wordmark in the style
+ * full-bleed space carries a giant textured CIT wordmark in the style
  * of the reference (dark grunge letters on black, cropped at the edge).
  * Explore links are real routes, not page fragments.
  */
@@ -31,24 +31,25 @@ export default function Footer() {
           <div className="max-w-xs">
             <div className="flex items-center gap-2.5">
               <BrandMark />
-              <span className="text-[16px] font-semibold tracking-tight text-neutral-50">SignSpeak</span>
+              <span className="text-[16px] font-semibold tracking-tight text-neutral-50">CIT Scheduler</span>
             </div>
             <p className="mt-4 text-[13.5px] leading-relaxed text-neutral-500">
-              On-device Indian Sign Language interpretation. Camera to spoken sentence, private by design.
+              Conflict-free timetables, midsem exams and Spectra venue decisions
+              for Chilika Institute of Technology.
             </p>
             <Link
-              to="/interpret"
+              to="/login"
               className="group mt-6 inline-flex items-center gap-1.5 font-mono-tech text-[12px] uppercase tracking-[0.18em] text-neutral-200 transition-colors duration-300 hover:text-amber-bright"
             >
-              Launch Studio
+              Open the scheduler
               <span aria-hidden="true" className="text-amber-bright transition-transform duration-300 group-hover:-translate-y-px group-hover:translate-x-px">↗</span>
             </Link>
           </div>
 
           {/* Link columns */}
           <div className="grid grid-cols-2 gap-10 sm:gap-16">
-            <nav aria-label="Studio">
-              <p className="font-mono-tech text-[10.5px] uppercase tracking-[0.24em] text-neutral-600">Studio</p>
+            <nav aria-label="Scheduler">
+              <p className="font-mono-tech text-[10.5px] uppercase tracking-[0.24em] text-neutral-600">Scheduler</p>
               <ul className="mt-5 space-y-3.5">
                 {STUDIO_ROUTES.map((l) => (
                   <li key={l.path}>
@@ -82,7 +83,7 @@ export default function Footer() {
 
         <div className="mt-14 flex flex-col items-start justify-between gap-4 border-t border-white/10 py-6 sm:flex-row sm:items-center">
           <p className="font-mono-tech text-[10.5px] uppercase tracking-[0.18em] text-neutral-600">
-            © {new Date().getFullYear()} SignSpeak · On-device ISL
+            © {new Date().getFullYear()} CIT Scheduler · Chilika Institute of Technology
           </p>
           <Link
             to="/"
@@ -97,7 +98,7 @@ export default function Footer() {
       {/* Giant wordmark space + living bat layer above the text */}
       <div aria-hidden="true" className="pointer-events-none relative select-none overflow-hidden">
         <p className="footer-giant whitespace-nowrap text-center font-display font-bold uppercase">
-          Alfredo
+          CIT
         </p>
         <BatSwarm />
       </div>

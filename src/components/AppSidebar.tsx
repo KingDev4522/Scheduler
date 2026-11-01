@@ -62,11 +62,11 @@ const SIDEBAR_MOTION_STYLES = `
     background: transparent;
   }
   .cit-scrollbar::-webkit-scrollbar-thumb {
-    background: #232326;
+    background: #475569;
     border-radius: 9999px;
   }
   .cit-scrollbar:hover::-webkit-scrollbar-thumb {
-    background: #323236;
+    background: #64748b;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -183,18 +183,18 @@ export default function AppSidebar() {
 
   const renderRail = () => (
     <div className="flex h-full w-full flex-col items-center">
-      <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-[#1c1c1f]">
+      <div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-[#334155]">
         <button
           type="button"
-          onClick={() => handleSelectNav('/')}
+          onClick={() => handleSelectNav('/dashboard')}
           onMouseEnter={(e) => showTooltip(e, 'CIT Scheduler')}
           onMouseLeave={hideTooltip}
           onFocus={(e) => showTooltip(e, 'CIT Scheduler')}
           onBlur={hideTooltip}
           aria-label="CIT Scheduler home"
-          className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-[#ededef] text-[11px] font-semibold tracking-tighter text-[#09090b] transition-transform hover:scale-[1.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#52525b]"
+          className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-white p-0.5 transition-transform hover:scale-[1.03] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#64748b]"
         >
-          CIT
+          <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
         </button>
       </div>
 
@@ -213,10 +213,10 @@ export default function AppSidebar() {
               onBlur={hideTooltip}
               aria-label={group}
               aria-pressed={isSelected && open}
-              className={`flex h-10 w-10 items-center justify-center rounded-[10px] transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#52525b] ${
+              className={`flex h-10 w-10 items-center justify-center rounded-[10px] transition-[color,background-color,transform] duration-200 hover:scale-[1.06] active:scale-95 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#64748b] ${
                 isSelected
-                  ? 'bg-[#232326] text-[#f4f4f5]'
-                  : 'text-[#71717a] hover:bg-[#18181b] hover:text-[#e4e4e7]'
+                  ? 'bg-[#334155] text-[#f8fafc]'
+                  : 'text-[#cbd5e1] hover:bg-[#2c3e57] hover:text-[#f1f5f9]'
               }`}
             >
               <Icon size={18} strokeWidth={isSelected ? 2 : 1.75} />
@@ -225,7 +225,7 @@ export default function AppSidebar() {
         })}
       </div>
 
-      <div className="flex w-full shrink-0 justify-center border-t border-[#1c1c1f] py-3">
+      <div className="flex w-full shrink-0 justify-center border-t border-[#334155] py-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -235,10 +235,10 @@ export default function AppSidebar() {
               onFocus={(e) => showTooltip(e, user.displayName)}
               onBlur={hideTooltip}
               aria-label={`Account menu for ${user.displayName}`}
-              className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[#3f3f46] bg-[#27272a] text-[10.5px] font-medium text-[#f4f4f5] transition-colors hover:border-[#52525b] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#52525b]"
+              className="relative flex h-8 w-8 items-center justify-center rounded-full border border-[#475569] bg-[#334155] text-[10.5px] font-medium text-[#f8fafc] transition-colors hover:border-[#64748b] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#64748b]"
             >
               {user.initials}
-              <span className="absolute -bottom-[1px] -right-[1px] h-[7px] w-[7px] rounded-full bg-[#a1a1aa] ring-2 ring-[#0a0a0a]" />
+              <span className="absolute -bottom-[1px] -right-[1px] h-[7px] w-[7px] rounded-full bg-[#93c5fd] ring-2 ring-[#1e293b]" />
             </button>
           </DropdownMenuTrigger>
 
@@ -278,8 +278,8 @@ export default function AppSidebar() {
 
   const renderPanel = (mobile = false) => (
     <div className="flex h-full w-full flex-col">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#1f1f23] px-3">
-        <span className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-[#71717a]">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b border-[#334155] px-3">
+        <span className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-[#cbd5e1]">
           {selectedGroup}
         </span>
         {!mobile && (
@@ -287,7 +287,7 @@ export default function AppSidebar() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Collapse navigation"
-            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#71717a] transition-colors hover:bg-[#232326] hover:text-[#e4e4e7] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#52525b]"
+            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-[#cbd5e1] transition-colors hover:bg-[#334155] hover:text-[#f1f5f9] focus:outline-none focus-visible:ring-1 focus-visible:ring-[#64748b]"
           >
             <PanelLeftClose size={15} />
           </button>
@@ -298,7 +298,7 @@ export default function AppSidebar() {
         aria-label={`${selectedGroup} links`}
         className="cit-scrollbar flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-2"
       >
-        <ul className="space-y-0.5" role="list">
+        <ul key={selectedGroup} className="cit-stagger space-y-0.5" role="list">
           {groupItems.map((item) => {
             const Icon = item.icon
             const isActive = isActivePath(item.path)
@@ -308,10 +308,10 @@ export default function AppSidebar() {
                   type="button"
                   onClick={() => handleSelectNav(item.path)}
                   aria-current={isActive ? 'page' : undefined}
-                  className={`group relative flex h-9 w-full items-center overflow-hidden rounded-[8px] px-2.5 text-left transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#71717a] ${
+                  className={`group relative flex h-9 w-full items-center overflow-hidden rounded-[8px] px-2.5 text-left transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-[#94a3b8] ${
                     isActive
-                      ? 'bg-[#232326] text-[#f4f4f5]'
-                      : 'text-[#a1a1aa] hover:bg-[#1b1b1e] hover:text-[#e4e4e7]'
+                      ? 'bg-[#334155] text-[#f8fafc]'
+                      : 'text-[#cbd5e1] hover:bg-[#2c3e57] hover:text-[#f1f5f9]'
                   }`}
                 >
                   <span
@@ -338,9 +338,9 @@ export default function AppSidebar() {
         </ul>
       </nav>
 
-      <div className="shrink-0 border-t border-[#1f1f23] px-3 py-2.5">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[#52525b]">
-          CIT Scheduler · demo
+      <div className="shrink-0 border-t border-[#334155] px-3 py-2.5">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[#94a3b8]">
+          CIT Scheduler · official
         </span>
       </div>
     </div>
@@ -352,7 +352,7 @@ export default function AppSidebar() {
 
       <aside
         aria-label="Primary navigation rail"
-        className="z-40 hidden h-full w-16 shrink-0 flex-col bg-[#0a0a0a] md:flex"
+        className="z-40 hidden h-full w-16 shrink-0 flex-col bg-[#1e293b] md:flex"
       >
         {renderRail()}
       </aside>
@@ -360,7 +360,7 @@ export default function AppSidebar() {
       <aside
         aria-label="Section navigation"
         style={{ width: open ? `${PANEL_WIDTH}px` : '0px' }}
-        className="cit-sidebar-panel z-30 hidden h-full shrink-0 flex-col overflow-hidden rounded-tl-2xl border-r border-[#1f1f23] bg-[#141417] md:flex"
+        className="cit-sidebar-panel z-30 hidden h-full shrink-0 flex-col overflow-hidden rounded-tr-2xl border-r border-[#334155] bg-[#243247] md:flex"
       >
         <div
           style={{ width: `${PANEL_WIDTH}px` }}
@@ -387,12 +387,12 @@ export default function AppSidebar() {
 
         <aside
           aria-label="Mobile navigation drawer"
-          className={`cit-mobile-drawer fixed inset-y-0 left-0 z-50 flex w-[314px] max-w-[92vw] overflow-hidden rounded-r-2xl border-r border-[#1f1f23] bg-[#0a0a0a] ${
+          className={`cit-mobile-drawer fixed inset-y-0 left-0 z-50 flex w-[314px] max-w-[92vw] overflow-hidden rounded-r-2xl border-r border-[#334155] bg-[#1e293b] ${
             openMobile ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
           <div className="w-16 shrink-0">{renderRail()}</div>
-          <div className="min-w-0 flex-1 bg-[#141417]">{renderPanel(true)}</div>
+          <div className="min-w-0 flex-1 bg-[#243247]">{renderPanel(true)}</div>
         </aside>
       </div>
 
@@ -403,7 +403,7 @@ export default function AppSidebar() {
           left: `${tooltip.left}px`,
           transform: `translate3d(${tooltip.visible ? '0px' : '-4px'}, -50%, 0)`,
         }}
-        className={`pointer-events-none fixed z-50 rounded-[6px] border border-[#27272a] bg-[#18181b] px-[9px] py-[5px] text-[12px] font-medium tracking-[-0.005em] text-[#f4f4f5] shadow-md transition-all duration-150 ${
+        className={`pointer-events-none fixed z-50 rounded-[6px] border border-[#475569] bg-[#243247] px-[9px] py-[5px] text-[12px] font-medium tracking-[-0.005em] text-[#f8fafc] shadow-md transition-all duration-150 ${
           tooltip.visible ? 'opacity-100' : 'opacity-0'
         }`}
       >

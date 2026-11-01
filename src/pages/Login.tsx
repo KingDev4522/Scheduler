@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
-import { CalendarClock, KeyRound, Loader2, UserRound } from 'lucide-react'
+import { BorderBeam } from 'border-beam'
+import { KeyRound, Loader2, UserRound } from 'lucide-react'
 import { ROLE_LABEL, useAuth } from '../lib/auth'
 
 const DEMO_ACCOUNTS = [
@@ -18,7 +19,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to="/dashboard" replace />
 
   const signIn = async (u: string, p: string) => {
     setBusy(true)
@@ -26,7 +27,7 @@ export default function Login() {
     const result = await login(u, p)
     if (result.ok) {
       setError(null)
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     } else {
       setError(result.error)
       setBusy(false)
@@ -43,7 +44,7 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-4">
+    <div className="cit-page flex min-h-screen items-center justify-center bg-neutral-950 p-4">
       {/* Soft backdrop pattern */}
       <div
         aria-hidden
@@ -52,8 +53,8 @@ export default function Login() {
 
       <div className="relative w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-lg shadow-black/40">
-            <CalendarClock className="h-7 w-7 text-neutral-950" aria-hidden />
+          <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white p-2 shadow-lg shadow-black/40">
+            <img src="/logo-mark.png" alt="CIT Scheduler" className="h-full w-full object-contain" />
           </span>
           <h1 className="mt-4 text-2xl font-semibold text-white">CIT Scheduler</h1>
           <p className="mt-1 text-sm text-neutral-400">
@@ -61,10 +62,23 @@ export default function Login() {
           </p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-neutral-800 bg-neutral-900/80 p-6 shadow-xl backdrop-blur"
+        <BorderBeam
+          size="md"
+          colorVariant="colorful"
+          strength={1}
+          duration={2.6}
+          theme="dark"
+          borderRadius={16}
+          brightness={2.1}
+          saturation={1.7}
+          glowSize={1.8}
+          className="w-full"
         >
+          <form
+            onSubmit={handleSubmit}
+            className="cit-login-panel relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/80 p-6 shadow-xl backdrop-blur"
+          >
+          <div aria-hidden className="cit-login-panel__wash" />
           <label className="block text-sm font-medium text-neutral-300" htmlFor="username">
             Username
           </label>
@@ -106,7 +120,7 @@ export default function Login() {
 
           {error && (
             <p
-              role="alert"               className="mt-4 rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-sm text-neutral-300"
+              role="alert"               className="cit-anim-pop mt-4 rounded-lg border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-sm text-neutral-300"
             >
               {error}
             </p>
@@ -125,7 +139,7 @@ export default function Login() {
             <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
               Demo accounts — one click
             </p>
-            <div className="mt-2 space-y-2">
+            <div className="cit-stagger mt-2 space-y-2">
               {DEMO_ACCOUNTS.map((acct) => (
                 <button
                   key={acct.username}
@@ -141,6 +155,7 @@ export default function Login() {
             </div>
           </div>
         </form>
+        </BorderBeam>
 
         <p className="mt-4 text-center text-xs text-neutral-600">
           Demo password for all accounts: <span className="font-mono text-neutral-400">1234</span>

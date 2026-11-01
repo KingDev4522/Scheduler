@@ -29,6 +29,9 @@ class BookingProposal:
     requested_category: str | None = None
     day: str | None = None
     start_period: int | None = None
+    # App-level context only: the concrete dates the requester picked. Never
+    # written into the official dataset request and never used by validation.
+    dates: list[str] = field(default_factory=list)
 
     def category(self, data: Data) -> str:
         cap = data.role_cap.get(self.role, "club_event")

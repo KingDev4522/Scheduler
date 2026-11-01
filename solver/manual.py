@@ -64,6 +64,8 @@ def validate_manual(
         if other is None:
             continue
         o_periods = data.block(o_start, other["duration"])
+        if other["faculty_id"] == s["faculty_id"] and o_day == day:
+            faculty_hours += other["duration"]
         if not _overlap(day, periods, o_day, o_periods):
             continue
         if o_room == room_id:
@@ -73,8 +75,6 @@ def validate_manual(
         same_basket = s.get("basket_slot") and other.get("basket_slot") == s.get("basket_slot")
         if not same_basket and set(other["groups"]) & set(s["groups"]):
             v.append(f"H3: group clash with {other_id} at {o_day} P{o_start}")
-        if other["faculty_id"] == s["faculty_id"] and o_day == day:
-            faculty_hours += other["duration"]
 
     limit = data.faculty[s["faculty_id"]].get("max_hours_per_day", 4)
     if faculty_hours > limit:
@@ -105,3 +105,43 @@ def apply_manual(
     updated = dict(timetable)
     updated[session_id] = (day, start, room_id)
     return True, updated, []
+
+
+def suggest_session_alternatives(
+    data: Data,
+    timetable: dict[str, tuple[str, int, str]],
+    session_id: str,
+    limit: int = 5,
+) -> list[dict]:
+    """Deterministic feasible alternatives for a flawed/ambiguous move request."""
+    session = data.sessions.get(session_id)
+    if session is None:
+        return []
+    out: list[dict] = []
+    seen: set[tuple[str, int, str]] = set()
+    current = timetable.get(session_id)
+    if current:
+        seen.add(current)
+    for day in data.days:
+        for start in data.legal_starts(session["duration"], session["kind"]):
+            fixed = session.get("fixed_slot")
+            if fixed and (fixed["day"] != day or fixed["start_period"] != start):
+                continue
+            for room_id in data.eligible_rooms(session):
+                key = (day, start, room_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                if validate_manual(data, timetable, session_id, day, start, room_id):
+                    continue
+                out.append(
+                    {
+                        "session_id": session_id,
+                        "day": day,
+                        "start_period": start,
+                        "room_id": room_id,
+                    }
+                )
+                if len(out) >= limit:
+                    return out
+    return out

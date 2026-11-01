@@ -5,21 +5,36 @@ conflict-free weekly timetables, 41 midsem exams, 25 Spectra booking requests wi
 disruption repair, auditable approvals, and an AI intake layer that never decides validity.
 
 **Current local state:** React + FastAPI + SQLite + OR-Tools CP-SAT. The official
-`cit_public.json` imports and validates. `python -m solver.run` generates
+`cit_public.json` imports and validates. The app and `python -m solver.run` generate
 `exports/schedule.json` and `exports/schedule_after.json`; both pass the unmodified official
-validator with **0 hard violations**, soft penalty **3**, booking score **63/70**, and a
-**12-session** (room-only) minimal disruption. Deployment and the video are external deliverables.
+validator with **0 hard violations** (base and after-disruption soft **3**), booking score
+**65.5/70**, and a **15-session** minimal disruption (3 time changes, 12 room-only). Live deployment
+and the video remain external deliverables.
 
 ## Features
 
 - **Weekly timetable** — 189 official sessions, Mon–Fri P1–P9 with lunch, P10–P13 events.
+- **Campus calendar** — a week picker (Weeks 1–8 via the backend's derived semester) plus week/month
+  views on the Dashboard and Timetables. Week 7 overlays the approved Spectra events and Week 8 shows
+  the midsem board; hover/click reveal dates and details. No Week 1–6 or month data is invented.
+- **Date-based booking** — the manual form and the assistant pick **actual dates** on a calendar
+  (multi-select, past dates and weekends blocked, exam week closed) and a **start/end time**; the
+  weekday, week number, period range and duration are derived from those (1 period = 1 hour). The
+  chosen date+week are stored on the app's submission; the official dataset schema and validator are
+  untouched. The assistant reports **all** missing fields in one pass.
 - **Exams** — 41 official midsem exams with AM/PM sessions, multi-room allocation and half capacity.
 - **Spectra bookings** — the 25 official requests, priority policy, reasons, alternatives and cancellations.
 - **Disruption repairs** — faculty leave / room closure, minimal-movement diff, Admin approval gate.
-- **AI intake** — Gemini extracts editable drafts; a deterministic local parser takes over during
-  provider outages. Validation, priority and approval remain Python-side.
+- **AI intake** — Gemini extracts editable drafts; the previous draft is sent back on every turn so
+  follow-up answers merge instead of resetting, and all missing fields are listed at once. A
+  deterministic local parser takes over during provider outages. Validation, priority and approval
+  remain Python-side.
 - **Four roles** — Admin, Department Coordinator, Faculty, Club Representative, with server-side
-  permissions and signed session tokens.
+  permissions and signed session tokens. Coordinators decide their department's lab bookings and
+  session moves; nobody can approve their own request.
+- **Official-data screens** — dashboard, timetables, rooms, exams, bookings, approvals, changes and
+  exports read the generated official schedule; the manual/AI booking flow validates and applies
+  ad-hoc requests.
 - **Role workspace** — faculty unavailability and change requests, club cancellation, Admin review.
 - **Auditable approvals** — no self-approval, reasons required, official proposal gate.
 
@@ -92,16 +107,18 @@ Docker Compose. `GEMINI_API_KEY` is optional — manual booking and local parsin
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VITE_API_BASE_URL` | `http://localhost:8000` in dev | Frontend API origin |
+| `VITE_API_BASE_URL` | empty (same origin) | API origin; leave empty in dev (Vite proxies `/api` to `127.0.0.1:8000`) and in Docker. Set only when the API is on a different origin |
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed browser origins (comma-separated) |
 | `DATABASE_PATH` | `backend/state.sqlite3` | SQLite system of record |
+| `SEMESTER_START_DATE` | `2026-11-02` | Week-1 Monday for the display calendar (dataset ships no dates) |
+| `TEAM_NAME` | `CIT Scheduler` | Team name written into `schedule.json` |
 | `GEMINI_API_KEY` | empty | Server-side Gemini key; never exposed to the browser |
-| `GEMINI_MODEL` | `gemini-3.6-flash` | Preferred extraction model |
-| `GEMINI_MODELS` | 3.6 → 3.8 → 3.5 → 2.5 flash | Ordered outage fallbacks |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Preferred extraction model |
+| `GEMINI_MODELS` | 2.5 → 3.6 → 3.5 → 3.8 flash | Ordered outage fallbacks |
 | `SESSION_SECRET` | random per process | HMAC key for demo session tokens |
 | `SESSION_TTL_SECONDS` | `28800` | Token lifetime |
 | `DEMO_PASSWORD` | `1234` | Demo account password |
-| `ALLOW_DEMO_HEADER` | `1` | Accept explicit `x-demo-user` for local tests; set `0` in a hardened deployment |
+| `ALLOW_DEMO_HEADER` | `0` | Accept explicit `x-demo-user` only for local tests; keep `0` in a public deployment |
 
 ## Run everything
 
@@ -120,12 +137,29 @@ npm run build
 python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
 ```
 
-Docker (optional; deployment is external):
+Docker (optional):
 
 ```bash
 docker compose up --build
 # http://localhost:8000
 ```
+
+### Deploy
+
+`render.yaml` is a one-service Render Blueprint for the Docker image. Connect the public
+repository, set `GEMINI_API_KEY` and the deployed origin in `CORS_ORIGINS`, and Render runs
+`/api/health` as the health check with a persistent `/data` disk for SQLite and exports.
+
+Any Docker host works with the same environment:
+
+- `DATABASE_PATH` on a persistent volume
+- `CORS_ORIGINS` set to the public origin (same-origin SPA does not need CORS)
+- `SESSION_SECRET` set once and kept stable
+- `ALLOW_DEMO_HEADER=0`
+- `GEMINI_API_KEY` server-side only
+
+The deployed app must stay up until the results are announced; the four demo accounts and the
+Admin reset button are the judge entry points.
 
 ## Demo accounts
 
@@ -179,9 +213,26 @@ python CrunchWeek_StarterPack/validator.py \
   --baseline exports/schedule.json
 ```
 
-Canonical results: **0 hard violations**, soft **3** (`S4: 3`), booking **63/70**, 20 approved /
-3 alternatives / 2 rejected, 0 priority inversions, exam penalty **0**, disruption **12 moved**
-(0 time, 12 room-only).
+Canonical results: **0 hard violations**, base soft **3** (`S4: 3`), after-disruption soft **3**
+(`S4: 3`), booking **65.5/70**, 21 approved / 2 alternatives / 2 rejected, 0 priority
+inversions, exam penalty **0**, disruption **15 moved** (3 time, 12 room-only).
+
+## Calendar and dates
+
+The official dataset has **no dates**: sessions and booking windows are weekday + period. The app
+therefore uses a configured term start for the display calendar instead of inventing sessions:
+
+- **Week 1 = Mon 2 Nov 2026** by default (`SEMESTER_START_DATE`), so **Week 7 = Mon 14 Dec 2026**
+  (Spectra) and **exam week (Week 8) = Mon 21 Dec 2026**. The assumption is shown in the UI. If the
+  setting is unset/invalid, it falls back to the dataset's Spectra-week timestamp (the cancellation
+  on 2027-02-03).
+- Weeks 1–6 reuse the one solved weekly template; Week 7 adds the Spectra events; Week 8 is the
+  midsem board. There is no Week 1–6 dataset, so none is fabricated.
+- `GET /api/dataset` returns this as `semester` (weeks, dates, phases). Booking submissions store the
+  chosen `dates` and derived `weeks` on the **app's** record only; the official dataset request and
+  `validator.py` are unchanged, so conflict checking stays weekday + period.
+- Clock times map 1:1 onto the period grid (one period = one hour; 08:00–13:00 and 14:00–22:00, lunch
+  closed), so the form takes a start/end time and derives the period range and duration.
 
 ## Tests
 
@@ -191,33 +242,42 @@ npm test                  # frontend Vitest
 npm run build             # TypeScript + production build
 ```
 
-Current local suite: **56 Python tests** (34 engine, 22 backend) and **5 frontend tests**. The
-negative-constraint suite proves the official validator actually rejects H1/H2/H3/H4/H7/H8
-violations. Solver tests use the committed canonical exports; run `python -m solver.run` first on a
-clean checkout.
+Current local suite: **93 Python tests** (1 skipped because this dataset has no fixed-slot sessions
+for H14) and **17 frontend tests**. The negative-constraint suite
+proves the official validator actually rejects every hard rule it can trigger (H1–H13; H14 skipped
+when absent) and detects every soft rule S1–S6. Solver tests use the committed canonical exports;
+run `python -m solver.run` first on a clean checkout.
+
+The backend tests use disposable databases under the system temp directory, so they do not touch
+`backend/state.sqlite3` or the committed exports.
 
 ## Roles and screens
 
 - **Admin** — dashboard, official data, generate/import/reset, bookings, manual booking, approvals,
   changes, role workspace, priority/proposal controls.
-- **Department Coordinator** — department-scoped timetable/approvals, manual booking, changes.
+- **Department Coordinator** — department-scoped timetable/approvals, department lab booking
+  decisions, manual booking, session-change requests.
 - **Faculty** — personal timetable, unavailability, session-change request, AI assistant, workspace.
-- **Club Representative** — natural-language/manual booking, booking history and cancellation,
-  AI assistant, workspace.
+- **Club Representative** — natural-language/manual booking, official Spectra board, booking history
+  and cancellation, AI assistant, workspace.
 
 ## Known limitations
 
 - Live deployment and the ≤5-minute video are external deliverables; not included in this repo state.
-- The explicit `x-demo-user` fallback is enabled by default for local judging/tests. Set
-  `ALLOW_DEMO_HEADER=0` to require tokens only.
+  The Dockerfile is production-ready and exposes `/api/health` for a host health check.
+- Set `ALLOW_DEMO_HEADER=1` only for local automated tests. The default `0` requires the signed
+  bearer token; the frontend logs in with the four demo accounts.
 - `POST /api/generate` is synchronous and can take up to 150 seconds; the UI shows a spinner rather
-  than a pollable job feed. A job endpoint is the next reliability step.
-- The frontend renders official data on `/official`, `/timetables`, `/exams`, `/dashboard`,
-  `/bookings`, `/manual`, `/assistant`, and `/workspace` actions. `/changes` and the demo store on
-  `/approvals` still mix local demo data with official actions; the official proposal card is live.
-- Change-request approval records the decision; applying a move still goes through the disruption/
-  approval workflow.
+  than a pollable job feed.
+- The frontend reads the official dataset and generated schedule on `/dashboard`, `/timetables`,
+  `/rooms`, `/exams`, `/bookings`, `/official`, `/changes`, `/manual`, `/assistant`, `/approvals`,
+  `/admin` and `/workspace`. The browser demo seed remains for the legacy unit tests only and is not
+  rendered by the judge-facing pages.
+- Change-request approval applies `move_session` to the current schedule when a schedule exists;
+  add/remove-session changes use the official change-file upload on `/changes` or `/admin`.
 - SQLite is the system of record; no Redis/worker is used.
+- `python -m solver.run` uses 120 seconds per solve; the API uses the same default. Soft scores can
+  vary slightly between runs because CP-SAT stops at the time limit, but hard correctness does not.
 
 ## Project structure
 

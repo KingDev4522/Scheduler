@@ -6,47 +6,47 @@ import { useInViewReveal } from '../lib/anim.jsx'
 gsap.registerPlugin(ScrollTrigger)
 
 /*
- * MANIFESTO - "how and what we actually do", told in pure typography.
+ * MANIFESTO - "how CIT Scheduler actually works", told in pure typography.
  * No illustrations: dual kinetic marquees, a scroll-illuminated manifesto
- * paragraph, a rotating circular-text badge, and giant numbered rows.
+ * paragraph, and giant numbered rows for generate, approve and repair.
  */
 
 const SEGMENTS = [
-  { text: 'Your camera watches your hands.' },
-  { text: 'MediaPipe maps twenty-one landmarks per hand, sixty times a second.', accent: 'text-amber-bright' },
-  { text: 'Motion segmentation cuts the stream into separate signs.' },
-  { text: 'Dynamic time warping matches each sign against templates that live only in your browser.', accent: 'text-aqua' },
-  { text: 'Grammar shapes the gloss into a clean sentence.' },
-  { text: 'A neural voice speaks it the moment your hands lower.', accent: 'text-amber-bright' },
-  { text: 'No servers. No uploads. No one watching.', accent: 'text-neutral-50' },
+  { text: 'An admin imports the official CIT dataset.' },
+  { text: 'The solver places all 189 sessions once, across weekdays and periods one to nine.', accent: 'text-amber-bright' },
+  { text: 'Forty-one midsem exams follow, seated at half room capacity.' },
+  { text: 'Twenty-five Spectra requests are scored by role, category and submission time.', accent: 'text-aqua' },
+  { text: 'Faculty leave and room closures become a previewed diff, never a silent edit.' },
+  { text: 'A deterministic validator checks every hard rule before an export is written.', accent: 'text-amber-bright' },
+  { text: 'No spreadsheets. No WhatsApp chains. One auditable plan.', accent: 'text-neutral-50' },
 ]
 
 const ROWS = [
   {
     index: '01',
-    verb: 'Watch',
-    serif: 'the hands.',
-    body: 'The camera feed never leaves the page. MediaPipe tracks 21 landmarks per hand, live in the browser.',
-    meta: ['MediaPipe', '21 landmarks', '60 fps'],
+    verb: 'Generate',
+    serif: 'the week.',
+    body: 'Import cit_public.json, then generate 189 sessions across Monday to Friday. Lunch, lab start periods and faculty maximums are hard constraints, not preferences.',
+    meta: ['189 sessions', 'P1–P9', '0 conflicts'],
   },
   {
     index: '02',
-    verb: 'Understand',
-    serif: 'the motion.',
-    body: 'Segmentation slices the stream into signs. DTW matches each one against your own local templates, then grammar turns gloss into a sentence.',
-    meta: ['DTW match', 'Local templates', 'Grammar'],
+    verb: 'Approve',
+    serif: 'the week.',
+    body: 'Score 25 Spectra requests by priority, offer alternatives with reasons, and move a regular session only when an approved institute event needs the room.',
+    meta: ['25 requests', 'Priority policy', 'Reasons'],
   },
   {
     index: '03',
-    verb: 'Speak',
-    serif: 'the sentence.',
-    body: 'A neural voice reads the sentence aloud the instant your hands lower, or whenever you tap speak.',
-    meta: ['Neural voice', 'Auto-speak', '0 bytes out'],
+    verb: 'Repair',
+    serif: 'the week.',
+    body: 'Faculty leave, a room closure or a new session becomes a previewed diff. Admin sees exactly what moves before accepting it.',
+    meta: ['Leave', 'Closure', 'Diff preview'],
   },
 ]
 
-const MARQUEE_A = ['Signs in', 'Speech out', 'On-device', 'Private', 'Real-time']
-const MARQUEE_B = ['No servers', 'No uploads', 'No one watching', 'Your hands do the talking']
+const MARQUEE_A = ['Classes in', 'Exams out', 'Conflict-free', 'Auditable', 'One plan']
+const MARQUEE_B = ['No spreadsheets', 'No WhatsApp chains', 'No silent changes', 'CIT runs on one schedule']
 
 function MarqueeRow({ items, reverse = false, outline = false }) {
   const line = (hidden) => (
@@ -140,7 +140,7 @@ export default function Manifesto() {
   )
 
   return (
-    <section id="how" className="relative overflow-hidden bg-obsidian py-28 md:py-40" aria-label="How SignSpeak works">
+    <section id="how" className="relative overflow-hidden bg-obsidian py-28 md:py-40" aria-label="How CIT Scheduler works">
       {/* faint vertical hairlines - type-room scaffolding, no imagery */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 mx-auto hidden max-w-6xl justify-between px-6 md:flex">
         {[0, 1, 2, 3].map((i) => (

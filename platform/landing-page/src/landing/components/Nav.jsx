@@ -11,8 +11,8 @@ import { STUDIO_ROUTES, isStudioPath } from '../../lib/routes'
  * hero → engine bridge): frosted blur masked into transparency + a black
  * gradient, so the bar blends into whatever scrolls beneath it.
  *
- * Universal: studio (dashboard) routes centered, one shared CTA, and an
- * always-visible auth slot - Gmail avatar + email + Log out when signed
+ * Universal: scheduler routes centered, one shared CTA, and an
+ * always-visible auth slot - avatar + email + Log out when signed
  * in, Log in when signed out. Every destination is a real route from
  * lib/routes.js, so nothing here can point at a missing page.
  */
@@ -69,8 +69,8 @@ export default function Nav() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [open])
 
-  // Backend health - same probe the old dashboard Navbar ran (instant on
-  // studio routes, 10s polling while translating).
+  // Backend health - same probe the scheduler shell runs (instant on
+  // scheduler routes, 10s polling while a timetable is in view).
   useEffect(() => {
     if (!onStudioRoute) return undefined
     let activeController = null
@@ -82,7 +82,7 @@ export default function Nav() {
       const signal = activeController.signal
       const timeoutId = window.setTimeout(() => activeController?.abort(), 5000)
       try {
-        const response = await fetch(`${API_BASE_URL}/`, { signal })
+        const response = await fetch(`${API_BASE_URL}/health`, { signal })
         if (!signal.aborted) setBackendStatus(response.ok ? 'online' : 'offline')
       } catch {
         if (!signal.aborted) setBackendStatus('offline')
@@ -92,7 +92,7 @@ export default function Nav() {
     }
 
     checkStatus()
-    if (location.pathname === '/translate') {
+    if (location.pathname === '/timetables') {
       pollingInterval = window.setInterval(checkStatus, 10000)
     }
 
@@ -147,7 +147,7 @@ export default function Nav() {
         <Link
           to="/"
           className="flex shrink-0 items-center gap-2.5 border-0 bg-transparent p-0 outline-none"
-          aria-label="SignSpeak home"
+          aria-label="CIT Scheduler home"
         >
           <img
             src="/logo-nav.png"
@@ -157,7 +157,7 @@ export default function Nav() {
             draggable={false}
             className="block h-10 w-10 border-0 bg-transparent object-contain outline-none"
           />
-          <span className="text-[15px] font-semibold tracking-tight text-neutral-50">SignSpeak</span>
+          <span className="text-[15px] font-semibold tracking-tight text-neutral-50">CIT Scheduler</span>
         </Link>
 
         {/* Links - free-floating, no container */}
@@ -189,7 +189,7 @@ export default function Nav() {
         </nav>
         <div className="flex-1 lg:hidden" />
 
-        {/* Backend status - studio-only (polls while on /translate).
+        {/* Backend status - scheduler-only (polls while on /timetables).
             Auth slot - always visible: avatar + email + Log out when
             signed in, Log in when signed out. */}
         <div className="hidden items-center gap-4 lg:flex">
@@ -236,14 +236,14 @@ export default function Nav() {
           )}
         </div>
 
-        {/* CTA - quiet editorial link, no box. Hidden on studio routes:
-            you're already in the studio, so the button is removed entirely. */}
+        {/* CTA - quiet editorial link, no box. Hidden on scheduler routes:
+            you're already in the app, so the button is removed entirely. */}
         {!onStudioRoute && (
           <Link
-            to="/interpret"
+            to="/login"
             className="group relative hidden items-center gap-1.5 text-[13px] font-semibold text-neutral-100 transition-colors duration-300 hover:text-amber-100 sm:flex"
           >
-            Launch Studio
+            Open the scheduler
             <span aria-hidden="true" className="text-amber-200 transition-transform duration-300 group-hover:-translate-y-px group-hover:translate-x-px">
               ↗
             </span>
@@ -281,7 +281,7 @@ export default function Nav() {
       {open && (
         <div className="nav-drop relative max-h-[calc(100dvh-76px)] overflow-y-auto bg-black/60 px-6 pb-6 pt-2 backdrop-blur-xl lg:hidden">
           <p className="pt-2 text-[10.5px] font-medium uppercase tracking-[0.22em] text-neutral-600">
-            Studio
+            Scheduler
           </p>
           <NavLink
             to="/"
@@ -313,11 +313,11 @@ export default function Nav() {
           ))}
           {!onStudioRoute && (
             <Link
-              to="/interpret"
+              to="/login"
               onClick={() => setOpen(false)}
               className="group flex w-full items-center gap-1.5 py-3.5 text-[15px] font-semibold text-neutral-50"
             >
-              Launch Studio
+              Open the scheduler
               <span aria-hidden="true" className="text-amber-200">↗</span>
             </Link>
           )}

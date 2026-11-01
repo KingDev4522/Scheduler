@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import unittest
 from pathlib import Path
 
-TEST_DB = Path(__file__).resolve().parent / "test_state.sqlite3"
+TEST_DB = Path(tempfile.gettempdir()) / "cit_scheduler_test_state.sqlite3"
 os.environ["DATABASE_PATH"] = str(TEST_DB)
+os.environ["ALLOW_DEMO_HEADER"] = "1"
+os.environ.setdefault("SEMESTER_START_DATE", "2026-11-02")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -48,6 +51,11 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(dataset["counts"]["sessions"], 189)
         self.assertEqual(len(dataset["entities"]["rooms"]), 27)
         self.assertEqual(len(dataset["entities"]["sessions"]), 189)
+        semester = dataset["semester"]
+        self.assertEqual(semester["fest_week"], 7)
+        self.assertEqual(semester["exam_week"], 8)
+        self.assertEqual(semester["semester_start"], "2026-11-02")
+        self.assertEqual(len(semester["weeks"]), 8)
 
     def test_generate_result(self) -> None:
         self.assertEqual(self.generated["sessions"], 189)
@@ -62,6 +70,46 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(len(self.schedule["schedule"]["exams"]), 41)
         self.assertEqual(len(self.schedule["schedule"]["fest_week"]["bookings"]), 25)
         self.assertEqual(len(self.schedule["decisions"]), 25)
+
+    def test_booking_dates_stay_app_level(self) -> None:
+        payload = {
+            "title": "Club meet",
+            "attendance": 30,
+            "duration_periods": 2,
+            "windows": [
+                {"day": "TUE", "from_period": 6, "to_period": 7},
+                {"day": "WED", "from_period": 6, "to_period": 7},
+                {"day": "THU", "from_period": 2, "to_period": 3},
+                {"day": "MON", "from_period": 1, "to_period": 2},
+            ],
+            "dates": ["2026-12-15", "2026-12-17"],
+            "room_types": ["seminar_hall"],
+            "needs": [],
+            "requested_room": None,
+            "mandatory_for_groups": [],
+        }
+        validation = self.client.post("/api/bookings/validate", headers=ADMIN, json=payload).json()
+        self.assertTrue(validation["alternatives"], validation)
+        choice = validation["alternatives"][0]
+        response = self.client.post(
+            "/api/bookings/submit",
+            headers=ADMIN,
+            json={
+                **payload,
+                "requested_room": choice["room_id"],
+                "day": choice["day"],
+                "start_period": choice["start_period"],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        request = response.json()["request"]
+        self.assertEqual(request["dates"], ["2026-12-15", "2026-12-17"])
+        self.assertEqual(request["weeks"], [7])
+        # The chosen date + week are app-level: the official request schema must not gain them.
+        dataset = self.client.get("/api/dataset", headers=ADMIN).json()
+        self.assertTrue(
+            all("dates" not in item for item in dataset["entities"]["booking_requests"])
+        )
 
     def test_non_admin_generate_forbidden(self) -> None:
         response = self.client.post("/api/generate", headers={"x-demo-user": "mehul"})

@@ -8,6 +8,7 @@ export const KEYS = {
   dataset: 'cit-scheduler:dataset',
   loginAttempts: 'cit-scheduler:login-attempts',
   sidebarOpen: 'cit-scheduler:sidebar-open',
+  theme: 'cit-scheduler:theme',
 } as const
 
 export function readJSON<T>(key: string, fallback: T): T {

@@ -1,6 +1,8 @@
 import type { LucideIcon } from 'lucide-react'
 import { AlertTriangle, Inbox, Loader2, RefreshCw } from 'lucide-react'
+import { motion } from 'framer-motion'
 import type { ReactNode } from 'react'
+import { SOFT_EASE } from '../lib/motion'
 
 export function EmptyState({
   icon: Icon = Inbox,
@@ -14,7 +16,12 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, ease: SOFT_EASE }}
+      className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center"
+    >
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-400">
         <Icon className="h-5 w-5" aria-hidden />
       </span>
@@ -23,7 +30,7 @@ export function EmptyState({
         <p className="mt-1 max-w-md text-sm leading-relaxed text-slate-500">{description}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
-    </div>
+    </motion.div>
   )
 }
 
@@ -37,8 +44,11 @@ export function ErrorState({
   onRetry?: () => void
 }) {
   return (
-    <div
+    <motion.div
       role="alert"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.42, ease: SOFT_EASE }}
       className="flex flex-col items-center justify-center rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-10 text-center"
     >
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-200 text-neutral-700">
@@ -58,7 +68,7 @@ export function ErrorState({
           Try again
         </button>
       )}
-    </div>
+    </motion.div>
   )
 }
 
@@ -101,8 +111,14 @@ export function StatusNotice({
       ? 'border-neutral-200 bg-neutral-50 text-neutral-800'
       : 'border-neutral-200 bg-neutral-50 text-neutral-800'
   return (
-    <div role="status" className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles}`}>
+    <motion.div
+      role="status"
+      initial={{ opacity: 0, y: -8, scale: 0.995 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.36, ease: SOFT_EASE }}
+      className={`mb-4 rounded-lg border px-4 py-3 text-sm ${styles}`}
+    >
       {children}
-    </div>
+    </motion.div>
   )
 }

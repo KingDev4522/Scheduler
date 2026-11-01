@@ -8,13 +8,18 @@ used to build or run the project is listed here.
 | Tool | Purpose | Where it helped |
 |---|---|---|
 | **Command Code** (agentic coding assistant) | Code generation and review during development | Scaffolded the React/Vite app, implemented the TypeScript demo engine and the Python CP-SAT engine, wrote the Phase 1 contracts, backend API, tests and documentation. |
+| **Taste Skill / design-taste-frontend** (`Leonxlnx/taste-skill`) | Frontend visual direction and review reference | Landing-page typography, layout and visual audit guidance. |
+| **Freebuff** (`.freebuff/project-id` local workspace metadata) | Local development workspace identifier | No model calls and no runtime behavior; the file is not committed. |
 | Organizer starter pack | Authoritative specification and validator | **Not AI** — organizer-supplied files, unmodified. |
 
 ## 2. AI in the product at runtime
 
 | Provider | Model | Purpose | Where |
 |---|---|---|---|
-| Google Gemini API | `gemini-3.6-flash` (overridable with `GEMINI_MODEL`) | Converts an English/Hinglish venue request into a structured, editable booking draft, and a schedule-change request into a structured change draft. | `backend/assistant.py`, called by `POST /api/assistant/parse` |
+| Google Gemini API | `gemini-2.5-flash` (overridable with `GEMINI_MODEL`) | Converts an English/Hinglish venue request into a structured, editable booking draft, and a schedule-change request into a structured change draft. | `backend/assistant.py`, called by `POST /api/assistant/parse` |
+
+The configured fallback chain is `gemini-2.5-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`,
+`gemini-3.8-flash`; a deterministic local-rules parser is the final fallback.
 
 **Boundaries enforced in code:**
 
@@ -61,9 +66,13 @@ Manual workflows must work with the AI provider disabled (`04_PHASE_4_AI_AUTH_FR
 
 ```
 GEMINI_API_KEY=<server-side only>
-GEMINI_MODEL=gemini-3.6-flash
-GEMINI_MODELS=gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash,gemini-2.5-flash
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODELS=gemini-2.5-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3.8-flash
 ```
+
+The API reports `source: local-rules` when the deterministic fallback produced the draft, and
+`source: gemini` only when a model response was accepted. If the model returns malformed JSON or
+fails schema validation, the parser falls back to local rules instead of writing anything.
 
 Any future provider (OpenAI-compatible, etc.) must be declared here with its model, purpose and key
 location before use.

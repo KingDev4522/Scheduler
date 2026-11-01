@@ -25,6 +25,15 @@ def solve_exams(data: Data, *, max_seconds: float = 60.0, workers: int = 8) -> E
     exams = list(data.exams.values())
     exam_rooms = data.exam_rooms()
     slots = [(d, s) for d in data.exam_days for s in data.exam_sessions]
+    exam_periods = {"AM": [2, 3, 4], "PM": [6, 7, 8]}
+    allowed_by_slot: dict[tuple[str, str], list[str]] = {}
+    for day, session in slots:
+        periods = exam_periods.get(session, [])
+        allowed_by_slot[(day, session)] = [
+            room
+            for room in exam_rooms
+            if not any((room, day, period) in data.room_unavailable for period in periods)
+        ]
 
     model = cp_model.CpModel()
     x = {}
@@ -36,16 +45,17 @@ def solve_exams(data: Data, *, max_seconds: float = 60.0, workers: int = 8) -> E
     y = {}
     for e in exams:
         for slot in slots:
-            for r in exam_rooms:
+            allowed = allowed_by_slot[slot]
+            for r in allowed:
                 y[(e["id"], slot, r)] = model.NewBoolVar(f"y[{e['id']},{slot},{r}]")
                 model.AddImplication(y[(e["id"], slot, r)], x[(e["id"], slot)])
-            model.Add(sum(y[(e["id"], slot, r)] for r in exam_rooms) >= x[(e["id"], slot)])
-            seats = sum(data.exam_half_capacity(r) * y[(e["id"], slot, r)] for r in exam_rooms)
+            model.Add(sum(y[(e["id"], slot, r)] for r in allowed) >= x[(e["id"], slot)])
+            seats = sum(data.exam_half_capacity(r) * y[(e["id"], slot, r)] for r in allowed)
             model.Add(seats >= e["size"] * x[(e["id"], slot)])
 
     # A room hosts at most one exam per slot.
     for slot in slots:
-        for r in exam_rooms:
+        for r in allowed_by_slot[slot]:
             model.Add(sum(y[(e["id"], slot, r)] for e in exams) <= 1)
 
     # A group sits at most one exam per slot; at most one per day is soft.
@@ -83,6 +93,10 @@ def solve_exams(data: Data, *, max_seconds: float = 60.0, workers: int = 8) -> E
     placements = {}
     for e in exams:
         slot = next(s for s in slots if solver.Value(x[(e["id"], s)]) == 1)
-        rooms = [r for r in exam_rooms if solver.Value(y[(e["id"], slot, r)]) == 1]
+        rooms = [
+            r
+            for r in allowed_by_slot[slot]
+            if solver.Value(y[(e["id"], slot, r)]) == 1
+        ]
         placements[e["id"]] = (slot[0], slot[1], rooms)
     return ExamSolution("FEASIBLE", placements)

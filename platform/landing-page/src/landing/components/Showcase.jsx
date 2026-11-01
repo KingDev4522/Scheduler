@@ -5,13 +5,13 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 gsap.registerPlugin(ScrollTrigger)
 
 /*
- * SHOWCASE - "We present you SignSpeak"
+ * SHOWCASE - "We present you CIT Scheduler"
  * Three full-bleed filmstrip rows driven by scroll: row 1 → left,
  * row 2 → right, row 3 → left, each at a slightly different rate.
  * A quiet centered statement floats over the motion.
  *
  * SWAPPING IN REAL PHOTOS: drop 1600×1000px JPGs into
- * `signspeak-landing/public/showcase/` named row1-1.jpg … row3-4.jpg.
+ * `public/showcase/` named row1-1.jpg … row3-4.jpg.
  * The site grade (mono + contrast + grain) applies automatically.
  */
 
@@ -25,7 +25,7 @@ const ROWS = [
 // pos = CSS object-position, zoom = scale to push edge artifacts out of frame.
 const REFRAME = {
   // row3-2: table lamp half-cropped on the far-left edge - zoom in + shift
-  // right so the lamp leaves the frame and the signers stay centered.
+  // right so the lamp leaves the frame and the subjects stay centered.
   '/showcase/row3-2.jpg': { pos: '68% 50%', zoom: 1.18 },
   // row2-4: warm foreground blur bar half-visible on the far-right edge - 
   // zoom in + shift left to crop it out.
@@ -121,10 +121,10 @@ export default function Showcase() {
   }, [])
 
   return (
-    <section id="showcase" ref={rootRef} aria-label="Field frames" className="relative overflow-hidden bg-black py-24 md:py-32">
+    <section id="showcase" ref={rootRef} aria-label="Inside CIT Scheduler" className="relative overflow-hidden bg-black py-24 md:py-32">
       <div className="mb-10 flex items-center gap-4 px-6 md:mb-12 md:px-10">
         <p className="font-mono-tech text-[10px] uppercase tracking-[0.3em] text-neutral-500">
-          Field recordings: 13 frames
+          Working views: 13 frames
         </p>
         <span className="h-px flex-1 bg-white/[0.08]" aria-hidden="true" />
         <p className="hidden font-mono-tech text-[10px] uppercase tracking-[0.3em] text-neutral-600 sm:block">
@@ -175,7 +175,7 @@ export default function Showcase() {
             We present you
           </p>
           <p className="mt-3 font-serif-aesthetic text-[clamp(2.6rem,6vw,5rem)] font-normal italic leading-none tracking-[-0.01em] text-neutral-50">
-            SignSpeak<span className="text-amber-200">.</span>
+            CIT Scheduler<span className="text-amber-200">.</span>
           </p>
         </div>
       </div>
