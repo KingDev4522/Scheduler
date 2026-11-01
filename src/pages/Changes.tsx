@@ -2,8 +2,6 @@ import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
-import { toBookingStatus } from '../lib/bookingBoard'
-import { cn } from '../lib/utils'
 import { EmptyState, StatusNotice } from '../components/States'
 import { PageSkeleton } from '../components/Skeletons'
 import { StatusPill } from '../components/BookingStatus'
@@ -288,7 +286,7 @@ export default function Changes() {
                     </div>
                     <p className="text-[12px] text-slate-500">
                       {applyTarget
-                        ? `${'name' in applyTarget ? applyTarget.name : applyTarget.id} on ${day}, ${
+                        ? `${applyTarget.name} on ${day}, ${
                             periods.length ? `P${[...periods].sort((a, b) => a - b).join(', P')}` : 'no periods'
                           }.`
                         : 'Pick a target and periods.'}

@@ -1,12 +1,22 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, CheckCircle2, Download, Loader2, Play, RotateCcw, Upload } from 'lucide-react'
 import { useOfficial } from '../hooks/useOfficial'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/auth'
+import { cn } from '../lib/utils'
 import { StatusNotice } from './States'
 import { Bone } from './Skeletons'
+
+const COUNT_LABEL: Record<string, string> = {
+  rooms: 'Venues',
+  faculty: 'Faculty',
+  student_groups: 'Groups',
+  courses: 'Courses',
+  sessions: 'Sessions',
+  booking_requests: 'Requests',
+  exams: 'Exams',
+}
 
 export function OfficialBackendPanel() {
   const official = useOfficial()
@@ -16,24 +26,21 @@ export function OfficialBackendPanel() {
   const disruptionInput = useRef<HTMLInputElement>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const connected = official.health !== null
 
   if (official.loading && !official.dataset) {
     return (
-      <section className="mb-5 rounded-xl border border-neutral-200 bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <Bone className="h-4 w-56" />
-            <Bone className="h-3 w-72 max-w-full" />
-          </div>
-          <Bone className="h-6 w-20 rounded-full" />
+      <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <div className="space-y-2">
+          <Bone className="h-4 w-56" />
+          <Bone className="h-3 w-72 max-w-full" />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Bone className="h-9 w-52 rounded-lg" />
           <Bone className="h-9 w-36 rounded-lg" />
           <Bone className="h-9 w-36 rounded-lg" />
-          <Bone className="h-9 w-32 rounded-lg" />
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
           {Array.from({ length: 6 }, (_, index) => (
@@ -48,7 +55,7 @@ export function OfficialBackendPanel() {
     const result = await official.generate()
     if (!result) return
     setToast(
-      `Official schedule ready · ${result.sessions} sessions · ${result.exams} exams · ${result.summary.hard_violation_count} hard violations`,
+      `${result.sessions} sessions · ${result.exams} exams · ${result.summary.hard_violation_count} hard violations`,
     )
     window.setTimeout(() => {
       setToast(null)
@@ -69,25 +76,16 @@ export function OfficialBackendPanel() {
     try {
       await api.downloadExport(name, user.username)
     } catch (error) {
-      setDownloadError(
-        error instanceof Error ? error.message : `Could not download ${name}.`,
-      )
+      setDownloadError(error instanceof Error ? error.message : `Could not download ${name}.`)
     }
   }
 
   return (
-    <section className="mb-5 rounded-xl border border-neutral-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-            {connected ? (
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
-            ) : (
-              <AlertTriangle className="h-4 w-4 text-amber-600" aria-hidden />
-            )}
-            Official engine · CP-SAT backend
-          </h3>
-          <p className="mt-1 text-xs text-neutral-600">
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-slate-200 px-5 py-3">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-semibold text-slate-900">Official engine</h3>
+          <p className="mt-0.5 text-[12px] text-slate-500">
             {connected
               ? `${official.dataset?.dataset_id ?? 'dataset'} · ${official.dataset?.institute ?? ''} · ${
                   official.schedule ? 'schedule generated' : 'ready to generate'
@@ -96,15 +94,22 @@ export function OfficialBackendPanel() {
           </p>
         </div>
         <span
-          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            connected ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-          }`}
+          className={cn(
+            'shrink-0 rounded-md border px-2 py-0.5 text-[12px] font-medium',
+            connected
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-amber-200 bg-amber-50 text-amber-900',
+          )}
         >
-          {connected ? 'connected' : 'offline'}
+          {connected ? 'Connected' : 'Offline'}
         </span>
-      </div>
+      </header>
 
-      {official.error && <div className="mt-3"><StatusNotice tone="error">{official.error}</StatusNotice></div>}
+      {official.error ? (
+        <div className="px-5 pt-3">
+          <StatusNotice tone="error">{official.error}</StatusNotice>
+        </div>
+      ) : null}
 
       <input
         ref={datasetInput}
@@ -138,7 +143,9 @@ export function OfficialBackendPanel() {
             void (async () => {
               const result = await official.uploadDisruption(file)
               if (result) {
-                setToast(`Repair proposal built · ${result.moved} moved · ${result.summary.hard_violation_count} hard violations`)
+                setToast(
+                  `Repair proposal built · ${result.moved} moved · ${result.summary.hard_violation_count} hard violations`,
+                )
                 window.setTimeout(() => setToast(null), 3500)
               }
             })()
@@ -147,144 +154,161 @@ export function OfficialBackendPanel() {
         }}
       />
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          disabled={!connected || official.busy}
-          onClick={() => void generate()}
-          className="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {official.busy ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <Play className="h-4 w-4" aria-hidden />
-          )}
-          {official.busy ? 'Solving…' : 'Generate official schedule'}
-        </button>
-        <button
-          type="button"
-          disabled={!connected || official.busy}
-          onClick={() => datasetInput.current?.click()}
-          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-        >
-          <Upload className="h-4 w-4" aria-hidden /> Upload dataset
-        </button>
-        <button
-          type="button"
-          disabled={!connected || official.busy || !official.schedule}
-          onClick={() => disruptionInput.current?.click()}
-          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-        >
-          <Upload className="h-4 w-4" aria-hidden /> Apply disruption
-        </button>
-        <button
-          type="button"
-          disabled={!connected || official.busy}
-          onClick={() => {
-            if (window.confirm('Reset the backend dataset and clear generated artifacts, submissions and change requests?')) {
-              void (async () => {
-                await official.reset()
-                setToast('Backend reset · bundled dataset restored')
-                window.setTimeout(() => setToast(null), 3500)
-              })()
-            }
-          }}
-          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3.5 py-2 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 disabled:opacity-50"
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden /> Reset backend
-        </button>
-        {official.schedule && (
-          <>
+      <div className="grid gap-6 px-5 py-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() => void download('schedule.json')}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 underline-offset-2 hover:underline"
+              disabled={!connected || official.busy}
+              onClick={() => void generate()}
+              className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download className="h-3 w-3" aria-hidden /> schedule.json
+              {official.busy ? 'Solving…' : 'Generate official schedule'}
             </button>
-            {official.schedule.proposal_status === 'approved' ? (
+            <button
+              type="button"
+              disabled={!connected || official.busy}
+              onClick={() => datasetInput.current?.click()}
+              className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:opacity-50"
+            >
+              Upload dataset
+            </button>
+            <button
+              type="button"
+              disabled={!connected || official.busy || !official.schedule}
+              onClick={() => disruptionInput.current?.click()}
+              className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:opacity-50"
+            >
+              Apply disruption
+            </button>
+            {confirmReset ? (
+              <span className="inline-flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={official.busy}
+                  onClick={() => {
+                    setConfirmReset(false)
+                    void (async () => {
+                      await official.reset()
+                      setToast('Backend reset · bundled dataset restored')
+                      window.setTimeout(() => setToast(null), 3500)
+                    })()
+                  }}
+                  className="inline-flex h-9 items-center rounded-lg border border-rose-200 bg-rose-50 px-3 text-[13px] font-medium text-rose-800 transition-colors hover:bg-rose-100 disabled:opacity-50"
+                >
+                  Confirm reset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(false)}
+                  className="inline-flex h-9 items-center rounded-lg px-2 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100"
+                >
+                  Keep
+                </button>
+              </span>
+            ) : (
               <button
                 type="button"
-                onClick={() => void download('schedule_after.json')}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-700 underline-offset-2 hover:underline"
+                disabled={!connected || official.busy}
+                onClick={() => setConfirmReset(true)}
+                className="inline-flex h-9 items-center rounded-lg px-2.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
               >
-                <Download className="h-3 w-3" aria-hidden /> schedule_after.json
+                Reset backend
               </button>
-            ) : (
-              <span className="text-[11px] text-slate-400">
-                schedule_after.json after Admin approval
-              </span>
             )}
-          </>
-        )}
-      </div>
+          </div>
 
-      {downloadError && (
-        <div className="mt-3">
-          <StatusNotice tone="error">{downloadError}</StatusNotice>
-        </div>
-      )}
-
-      {official.dataset && (
-        <dl className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
-          {Object.entries(official.dataset.counts).map(([key, value]) => (
-            <div key={key} className="rounded border border-neutral-200 bg-neutral-50 px-2 py-1.5">
-              <dt className="text-[10px] uppercase tracking-wide text-neutral-500">{key}</dt>
-              <dd className="text-sm font-semibold text-neutral-900">{value}</dd>
+          {official.schedule ? (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+              <span className="text-[12px] text-slate-500">Exports</span>
+              <button
+                type="button"
+                onClick={() => void download('schedule.json')}
+                className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2 text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-400"
+              >
+                schedule.json
+              </button>
+              {official.schedule.proposal_status === 'approved' ? (
+                <button
+                  type="button"
+                  onClick={() => void download('schedule_after.json')}
+                  className="inline-flex h-7 items-center rounded-md border border-slate-300 bg-white px-2 text-[12px] font-medium text-slate-700 transition-colors hover:border-slate-400"
+                >
+                  schedule_after.json
+                </button>
+              ) : (
+                <span className="text-[12px] text-slate-400">
+                  schedule_after.json unlocks after Admin approval
+                </span>
+              )}
             </div>
-          ))}
-        </dl>
-      )}
+          ) : null}
 
-      {official.generateResult && (
-        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-          <p className="font-semibold">
-            Generated {official.generateResult.sessions} sessions and {official.generateResult.exams}{' '}
-            exams · {official.generateResult.summary.hard_violation_count} hard violations
-          </p>
-          <p className="mt-1">
-            Soft penalty {official.generateResult.summary.soft_total} · booking score{' '}
-            {official.generateResult.booking_score} · policy {official.generateResult.policy_version}
-          </p>
-          <p className="mt-1 text-emerald-800">
-            Open <span className="font-semibold">Official Data</span> in the sidebar to inspect the
-            timetable, exams, decisions and diff.
-          </p>
-        </div>
-      )}
+          {downloadError ? <StatusNotice tone="error">{downloadError}</StatusNotice> : null}
 
-      {official.disruptionResult && (
-        <div className="mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-800">
-          <p className="font-semibold">
-            Disruption applied · {official.disruptionResult.moved} sessions moved (
-            {official.disruptionResult.time_changed} time,{' '}
-            {official.disruptionResult.room_only_changed} room-only) ·{' '}
-            {official.disruptionResult.summary.hard_violation_count} hard violations ·{' '}
-            {official.disruptionResult.minimal ? 'minimal' : 'above minimum'}
-          </p>
-        </div>
-      )}
-
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.98 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="fixed bottom-6 right-6 z-[60] flex max-w-sm items-start gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-2xl"
-            role="status"
-          >
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-            <div>
-              <p className="text-sm font-semibold text-slate-900">Official engine</p>
-              <p className="mt-0.5 text-xs text-slate-600">{toast}</p>
-              <p className="mt-1 text-[11px] font-medium text-emerald-700">
-                Backend state refreshed.
+          {official.generateResult ? (
+            <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+              <p className="text-[13px] font-medium text-emerald-800">
+                Generated {official.generateResult.sessions} sessions and {official.generateResult.exams}{' '}
+                exams · {official.generateResult.summary.hard_violation_count} hard violations
+              </p>
+              <p className="mt-0.5 text-[12px] text-slate-600">
+                Soft penalty {official.generateResult.summary.soft_total} · booking score{' '}
+                {official.generateResult.booking_score} · policy {official.generateResult.policy_version}
+              </p>
+              <p className="mt-0.5 text-[12px] text-slate-500">
+                Inspect the timetable, exams, decisions and diff in Official Data.
               </p>
             </div>
+          ) : null}
+
+          {official.disruptionResult ? (
+            <div className="rounded-lg border border-slate-200 px-3 py-2.5">
+              <p className="text-[13px] font-medium text-slate-800">
+                Disruption applied · {official.disruptionResult.moved} sessions moved
+              </p>
+              <p className="mt-0.5 text-[12px] text-slate-600">
+                {official.disruptionResult.time_changed} time ·{' '}
+                {official.disruptionResult.room_only_changed} room-only ·{' '}
+                {official.disruptionResult.summary.hard_violation_count} hard violations ·{' '}
+                {official.disruptionResult.minimal ? 'minimal' : 'above minimum'}
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {official.dataset ? (
+          <div className="min-w-0">
+            <p className="text-[12px] text-slate-500">In this dataset</p>
+            <dl className="mt-1.5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200">
+              {Object.entries(official.dataset.counts).map(([key, value]) => (
+                <div key={key} className="bg-white px-3 py-2">
+                  <dt className="text-[12px] text-slate-500">{COUNT_LABEL[key] ?? key}</dt>
+                  <dd className="mt-0.5 text-right text-[16px] font-semibold tabular-nums text-slate-900">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
+      </div>
+
+      <AnimatePresence>
+        {toast ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.99 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="fixed bottom-6 right-6 z-[60] max-w-sm rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg"
+            role="status"
+          >
+            <p className="text-[13px] font-semibold text-slate-900">Official engine</p>
+            <p className="mt-0.5 text-[12px] text-slate-600">{toast}</p>
+            <p className="mt-1 text-[12px] text-emerald-700">Backend state refreshed.</p>
           </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
     </section>
   )

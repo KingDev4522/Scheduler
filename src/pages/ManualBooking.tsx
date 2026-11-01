@@ -393,7 +393,7 @@ export default function ManualBooking() {
           >
             {isAdmin || isCoordinator ? 'Open approvals' : 'My workspace'}
             {pendingInScope > 0 ? (
-              <span className="rounded-full bg-white/20 px-1.5 text-[12px] tabular-nums">
+              <span className="rounded bg-white/20 px-1.5 text-[12px] tabular-nums">
                 {pendingInScope}
               </span>
             ) : null}

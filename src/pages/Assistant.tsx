@@ -1,16 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CheckCircle2, Sparkles } from 'lucide-react'
-import { PageHeader } from '../components/PageHeader'
-import { EmptyState, ErrorState, StatusNotice } from '../components/States'
-import { PageSkeleton } from '../components/Skeletons'
-import { BookingDraftForm, type BookingFormOptions } from '../components/BookingDraftForm'
-import { SessionChangeForm, type SessionChangeInitial } from '../components/SessionChangeForm'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
 import { useAvailability } from '../hooks/useAvailability'
 import { buildOfficialView } from '../lib/official'
 import { sessionDepartment } from '../lib/departments'
+import { cn } from '../lib/utils'
 import {
   api,
   type AssistantParseResult,
@@ -20,6 +15,12 @@ import {
   type MissingField,
 } from '../lib/api'
 import { datasetDay } from '../lib/semester'
+import { EmptyState, ErrorState, StatusNotice } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
+import { BookingDraftForm, type BookingFormOptions } from '../components/BookingDraftForm'
+import { SessionChangeForm, type SessionChangeInitial } from '../components/SessionChangeForm'
+import { PeriodTape } from '../components/PeriodTape'
+import { FormSection, fieldTextarea } from '../components/FormBits'
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
@@ -58,11 +59,7 @@ export default function Assistant() {
   const isClub = user?.role === 'event_manager'
   const isAdmin = user?.role === 'admin'
   const isCoordinator = user?.role === 'department_coordinator'
-  const availableModes: AssistantMode[] = isFaculty
-    ? ['change']
-    : isClub
-      ? ['booking']
-      : ['booking', 'change']
+  const availableModes: AssistantMode[] = isFaculty ? ['change'] : isClub ? ['booking'] : ['booking', 'change']
   const [mode, setMode] = useState<AssistantMode>(isFaculty ? 'change' : 'booking')
   const [text, setText] = useState('')
   const [parsed, setParsed] = useState<AssistantParseResult | null>(null)
@@ -206,11 +203,11 @@ export default function Assistant() {
         setDraft(toDraft(result))
         setChangeDraft(null)
       } else {
-              setChangeDraft({
-                ...(result.draft as SessionChangeInitial),
-                request_reason:
-                  (result.draft as Record<string, unknown>)?.request_reason as string | undefined,
-              })
+        setChangeDraft({
+          ...(result.draft as SessionChangeInitial),
+          request_reason:
+            (result.draft as Record<string, unknown>)?.request_reason as string | undefined,
+        })
         setDraft(null)
       }
       setFollowUp(result.follow_up)
@@ -252,14 +249,8 @@ export default function Assistant() {
     setBusy(true)
     setError(null)
     try {
-      const result = await api.submitBooking(
-        { ...draft, ...(slot ?? {}), raw_text: text },
-        user.username,
-      )
-      setFlash({
-        tone: 'success',
-        message: `${result.request.id} submitted for approval.`,
-      })
+      const result = await api.submitBooking({ ...draft, ...(slot ?? {}), raw_text: text }, user.username)
+      setFlash({ tone: 'success', message: `${result.request.id} submitted for approval.` })
       setDraft(null)
       setParsed(null)
       setValidation(null)
@@ -280,9 +271,7 @@ export default function Assistant() {
       return
     }
     if (!draft.request_reason?.trim()) {
-      setError(
-        'Add a short reason for this request. The approver sees it, so it cannot be blank.',
-      )
+      setError('Add a short reason for this request. The approver sees it, so it cannot be blank.')
       return
     }
     if (validation?.ok) {
@@ -329,16 +318,27 @@ export default function Assistant() {
     setError(null)
     try {
       setValidation(
-        await api.validateBooking(
-          { ...nextDraft, ...nextSlot, raw_text: text },
-          user.username,
-        ),
+        await api.validateBooking({ ...nextDraft, ...nextSlot, raw_text: text }, user.username),
       )
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Validation failed.')
     } finally {
       setBusy(false)
     }
+  }
+
+  const reset = () => {
+    setText('')
+    setDraft(null)
+    setChangeDraft(null)
+    setParsed(null)
+    setMissing([])
+    setFollowUp([])
+    setValidation(null)
+    setSlot(null)
+    setClarification('')
+    setFlash(null)
+    setError(null)
   }
 
   if (official.loading && !official.dataset) {
@@ -348,192 +348,196 @@ export default function Assistant() {
   if (!official.dataset || !options) {
     return (
       <div>
-        <PageHeader title="AI Assistant" subtitle="Natural-language intake." />
-        <ErrorState
-          title="Backend not reachable"
-          description={`${official.error ?? 'The scheduling API is offline.'} The manual booking form still works once the API is up.`}
-          onRetry={() => void official.refresh()}
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">AI Assistant</h2>
+        <div className="mt-4">
+          <ErrorState
+            title="Backend not reachable"
+            description={`${official.error ?? 'The scheduling API is offline.'} The manual booking form still works once the API is up.`}
+            onRetry={() => void official.refresh()}
+          />
+        </div>
       </div>
     )
   }
 
+  const modelLabel = modelInfo
+    ? modelInfo.configured
+      ? `${modelInfo.model} · extraction only`
+      : 'local-rules fallback · extraction only'
+    : 'checking model'
+
+  const modeLabel = (value: AssistantMode) =>
+    value === 'booking' ? (isCoordinator ? 'Department event' : 'Event booking') : 'Session change'
+
   return (
     <div className="cit-page">
-      <PageHeader
-        title="AI Assistant"
-        subtitle={
-          mode === 'change'
-            ? 'Describe a schedule change in English or Hinglish. Gemini extracts the target; Python checks every hard rule before anything is submitted.'
-            : 'Describe a venue request in English or Hinglish. Gemini extracts a draft; the deterministic validator decides what is possible.'
-        }
-      />
-
-      {flash && (
-        <StatusNotice tone={flash.tone}>
-          {flash.message}
-          {flash.tone === 'success' && (
-            <>
-              {' '}
-              <Link to="/approvals" className="font-semibold underline">
-                Track it in Approvals →
-              </Link>
-            </>
-          )}
-        </StatusNotice>
-      )}
-      {error && <StatusNotice tone="error">{error}</StatusNotice>}
-
-      {availableModes.length > 1 && (
-        <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-          {availableModes.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                setMode(option)
-                setDraft(null)
-                setChangeDraft(null)
-                setParsed(null)
-                setMissing([])
-                setFollowUp([])
-                setValidation(null)
-                setSlot(null)
-                setText('')
-                setClarification('')
-              }}
-              aria-pressed={mode === option}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
-                mode === option ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-              }`}
-            >
-              {option === 'booking'
-                ? isCoordinator
-                  ? 'Department event'
-                  : 'Event booking'
-                : 'Session change'}
-            </button>
-          ))}
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">AI Assistant</h2>
+          <p className="mt-1 max-w-[56ch] text-[14px] leading-relaxed text-slate-600">
+            Describe the request in English or Hinglish. The model extracts a draft, Python checks
+            every hard rule, and you review each field before anything is submitted.
+          </p>
         </div>
-      )}
-
-      <section className="cit-card rounded-xl border border-neutral-200 bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-            <Sparkles className="h-4 w-4" aria-hidden /> Describe your request
-          </h3>
-          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600">
-            {modelInfo
-              ? modelInfo.configured
-                ? `${modelInfo.model} · extraction only`
-                : 'local-rules fallback · extraction only'
-              : 'checking model…'}
-          </span>
-        </div>
-        <label htmlFor="assistant-text" className="mt-3 block text-xs font-medium text-neutral-600">
-          Request text
-        </label>
-        <textarea
-          id="assistant-text"
-          rows={4}
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={
-            mode === 'change'
-              ? 'e.g. Move CS201 from Monday P3 to Tuesday P6, room LT-2'
-              : 'e.g. seminar hall kal shaam 6 baje, 2 ghante, 100 log, mic chahiye'
-          }
-          className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400"
-        />
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void parse()}
-            disabled={busy}
-            className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {busy
-              ? 'Interpreting…'
-              : mode === 'change'
-                ? changeDraft
-                  ? 'Refine change'
-                  : 'Interpret change'
-                : draft
-                  ? 'Refine draft'
-                  : 'Interpret request'}
-          </button>
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             to="/manual"
-            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+            className="hidden h-8 items-center rounded-lg px-2.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
           >
-            Use the manual form
+            Manual form
           </Link>
-          {(draft || text || changeDraft) && (
-            <button
-              type="button"
-              onClick={() => {
-                setText('')
-                setDraft(null)
-                setChangeDraft(null)
-                setParsed(null)
-                setMissing([])
-                setFollowUp([])
-                setValidation(null)
-                setSlot(null)
-                setClarification('')
-                setFlash(null)
-                setError(null)
-              }}
-              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
-            >
-              Start over
-            </button>
-          )}
-          <span className="text-[11px] text-neutral-500">
-            The assistant never approves or validates. You review every field.
-          </span>
+          <Link
+            to="/approvals"
+            className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+          >
+            Open approvals
+          </Link>
+        </div>
+      </header>
+
+      {flash ? (
+        <div className="mt-4">
+          <StatusNotice tone={flash.tone}>
+            {flash.message}
+            {flash.tone === 'success' ? (
+              <>
+                {' '}
+                <Link to="/approvals" className="font-medium underline">
+                  Track it in Approvals
+                </Link>
+              </>
+            ) : null}
+          </StatusNotice>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="mt-4">
+          <StatusNotice tone="error">{error}</StatusNotice>
+        </div>
+      ) : null}
+
+      {availableModes.length > 1 ? (
+        <div className="mt-4 flex gap-5 border-b border-slate-200">
+          {availableModes.map((option) => {
+            const active = mode === option
+            return (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setMode(option)
+                  reset()
+                }}
+                className={cn(
+                  '-mb-px border-b-2 pb-2.5 pt-1 text-[13px] transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-300 dark:focus-visible:ring-offset-slate-950',
+                  active
+                    ? 'border-neutral-900 font-medium text-slate-900'
+                    : 'border-transparent text-slate-500 hover:text-slate-800',
+                )}
+              >
+                {modeLabel(option)}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+
+      <section className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-200 px-5 py-3">
+          <h3 className="text-[15px] font-semibold text-slate-900">Describe your request</h3>
+          <p className="text-[12px] text-slate-500">{modelLabel}</p>
+        </div>
+        <div className="px-5 py-4">
+          <FormSection title="In your own words">
+            <label htmlFor="assistant-text" className="sr-only">
+              Request text
+            </label>
+            <textarea
+              id="assistant-text"
+              rows={4}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder={
+                mode === 'change'
+                  ? 'e.g. Move CS201 from Monday P3 to Tuesday P6, room LT-2'
+                  : 'e.g. seminar hall kal shaam 6 baje, 2 ghante, 100 log, mic chahiye'
+              }
+              className={fieldTextarea}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void parse()}
+                disabled={busy}
+                className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {busy
+                  ? 'Interpreting…'
+                  : mode === 'change'
+                    ? changeDraft
+                      ? 'Refine change'
+                      : 'Interpret change'
+                    : draft
+                      ? 'Refine draft'
+                      : 'Interpret request'}
+              </button>
+              {(draft || text || changeDraft) && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:border-slate-400"
+                >
+                  Start over
+                </button>
+              )}
+              <span className="text-[12px] text-slate-500">
+                The assistant never approves or validates.
+              </span>
+            </div>
+          </FormSection>
         </div>
       </section>
 
       {(missing.length > 0 || followUp.length > 0) && (
-        <section className="cit-anim-pop mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-semibold text-amber-900">
+        <section className="cit-anim-pop mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-[13px] font-semibold text-amber-900">
             {missing.length > 0
-              ? `Fill these ${missing.length} item${missing.length === 1 ? '' : 's'} — all at once`
+              ? `${missing.length} detail${missing.length === 1 ? '' : 's'} still needed`
               : 'Please clarify'}
           </p>
           {missing.length > 0 ? (
-            <ul className="mt-1 space-y-1 text-xs text-amber-800">
+            <ul className="mt-1.5 space-y-1">
               {missing.map((item) => (
-                <li key={`${item.field}-${item.question}`} className="flex flex-wrap items-baseline gap-1.5">
-                  <span className="rounded bg-amber-200/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
-                    {item.field.replace(/_/g, ' ')}
-                  </span>
-                  <span>{item.question}</span>
-                  {item.options && item.options.length > 0 && (
-                    <span className="text-amber-700/80">({item.options.slice(0, 6).join(', ')})</span>
-                  )}
+                <li key={`${item.field}-${item.question}`} className="text-[12px] leading-relaxed text-amber-900">
+                  <span className="font-medium">{item.field.replace(/_/g, ' ')}</span> · {item.question}
+                  {item.options && item.options.length > 0 ? (
+                    <span className="text-amber-800"> ({item.options.slice(0, 6).join(', ')})</span>
+                  ) : null}
                 </li>
               ))}
             </ul>
           ) : (
-            <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-amber-800">
+            <ul className="mt-1.5 space-y-1">
               {followUp.map((question) => (
-                <li key={question}>{question}</li>
+                <li key={question} className="text-[12px] leading-relaxed text-amber-900">
+                  {question}
+                </li>
               ))}
             </ul>
           )}
-          {parsed?.fallback_reason && (
-            <p className="mt-1 break-words text-[10px] text-amber-700">
+          {parsed?.fallback_reason ? (
+            <p className="mt-1 text-[12px] break-words text-amber-800">
               {parsed.fallback_reason.slice(0, 220)}
             </p>
-          )}
+          ) : null}
           <div className="mt-2 flex flex-wrap gap-2">
             <input
               value={clarification}
               onChange={(event) => setClarification(event.target.value)}
               placeholder="Answer the question or add the missing detail"
-              className="min-w-[14rem] flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400"
+              className="h-9 min-w-[14rem] flex-1 rounded-lg border border-amber-300 bg-white px-2.5 text-[13px] text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 dark:focus-visible:ring-slate-300"
             />
             <button
               type="button"
@@ -545,7 +549,7 @@ export default function Assistant() {
                 void parse(next, draft)
               }}
               disabled={busy || clarification.trim().length === 0}
-              className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+              className="h-9 rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:opacity-50"
             >
               Apply clarification
             </button>
@@ -554,14 +558,14 @@ export default function Assistant() {
       )}
 
       {mode === 'booking' && draft && options ? (
-        <section className="cit-anim-pop mt-4 rounded-xl border border-neutral-200 bg-white p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-neutral-900">Editable draft</h3>
-            <span className="text-[11px] text-neutral-500">
-              {parsed ? `source: ${parsed.model}` : 'manual edit'}
-            </span>
+        <section className="cit-anim-pop mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-200 px-5 py-3">
+            <h3 className="text-[15px] font-semibold text-slate-900">Editable draft</h3>
+            <p className="text-[12px] text-slate-500">
+              {parsed ? `source: ${parsed.model}` : 'edited by hand'}
+            </p>
           </div>
-          <div className="mt-4">
+          <div className="px-5 py-4">
             <BookingDraftForm
               draft={draft}
               options={options}
@@ -574,69 +578,97 @@ export default function Assistant() {
                 setValidation(null)
               }}
             />
+
+            {validation ? (
+              <div className="cit-anim-pop mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p
+                  className={cn(
+                    'text-[13px] font-semibold',
+                    validation.ok ? 'text-emerald-800' : 'text-rose-800',
+                  )}
+                >
+                  {validation.ok ? 'Every hard check passes' : 'Blocked by hard checks'}
+                </p>
+                {validation.violations.length > 0 ? (
+                  <ul className="mt-2 space-y-1">
+                    {validation.violations.map((violation) => (
+                      <li key={violation} className="text-[12px] text-rose-800">
+                        {violation}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {validation.alternatives.length > 0 ? (
+                  <div className="mt-3">
+                    <p className="text-[12px] text-slate-500">Slots that would work</p>
+                    <ul className="mt-1.5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {validation.alternatives.map((alternative) => (
+                        <li key={`${alternative.room_id}-${alternative.day}-${alternative.start_period}`}>
+                          <button
+                            type="button"
+                            onClick={() => void chooseAlternative(alternative)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left transition-colors hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 dark:focus-visible:ring-slate-300"
+                          >
+                            <span className="block text-[12px] text-slate-800">
+                              <span className="font-medium">{alternative.room_id}</span>
+                              <span className="text-slate-500">
+                                {' · '}
+                                {alternative.day} P{alternative.start_period}–P{alternative.end_period}
+                              </span>
+                            </span>
+                            <span className="mt-1 block text-[12px] text-slate-500">
+                              {alternative.type.replace(/_/g, ' ')} · {alternative.capacity} seats
+                            </span>
+                            <span className="mt-1.5 block">
+                              <PeriodTape
+                                from={alternative.start_period}
+                                to={alternative.end_period}
+                                tone="granted"
+                              />
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void validate()}
-              disabled={busy}
-              className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-semibold text-neutral-800 disabled:opacity-50"
-            >
-              Check availability
-            </button>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
             <button
               type="button"
               onClick={() => void submit()}
               disabled={busy}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-9 items-center rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Submit for approval
             </button>
-            <span className="self-center text-xs text-neutral-500">
+            <button
+              type="button"
+              onClick={() => void validate()}
+              disabled={busy}
+              className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-700 transition-colors hover:border-slate-400 disabled:opacity-50"
+            >
+              Check the slot
+            </button>
+            <p className="text-[12px] text-slate-500">
               {validation?.ok
-                ? 'A validated slot is selected.'
-                : 'Submit validates first; choose a feasible alternative if none is selected.'}
-            </span>
+                ? 'A validated slot is chosen.'
+                : 'Submitting validates first; pick a feasible slot if none is selected.'}
+            </p>
           </div>
-
-          {validation && (
-            <div className="cit-anim-pop mt-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs">
-              {validation.violations.map((violation) => (
-                <p key={violation} className="text-rose-700">
-                  • {violation}
-                </p>
-              ))}
-              {validation.alternatives.map((alternative) => (
-                <button
-                  key={`${alternative.room_id}-${alternative.day}-${alternative.start_period}`}
-                  type="button"
-                  onClick={() => void chooseAlternative(alternative)}
-                  className="mr-2 mt-1 rounded border border-neutral-200 bg-white px-2 py-1 text-left text-neutral-700"
-                >
-                  Use {alternative.room_id} · {alternative.day} P{alternative.start_period}
-                </button>
-              ))}
-              {validation.ok && (
-                <p className="flex items-center gap-1.5 text-emerald-700">
-                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Ready to submit.
-                </p>
-              )}
-            </div>
-          )}
         </section>
       ) : mode === 'change' && options ? (
-        <section className="cit-anim-pop mt-4 rounded-xl border border-neutral-200 bg-white p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-neutral-900">Change draft</h3>
-            <span className="text-[11px] text-neutral-500">
-              {parsed ? `source: ${parsed.model}` : 'manual selection'}
-            </span>
+        <section className="cit-anim-pop mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-200 px-5 py-3">
+            <h3 className="text-[15px] font-semibold text-slate-900">Change draft</h3>
+            <p className="text-[12px] text-slate-500">
+              {parsed ? `source: ${parsed.model}` : 'picked by hand'}
+            </p>
           </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Pick the session and target slot. Red blocks submission; orange is a soft warning that is
-            still reviewable.
-          </p>
-          <div className="mt-4">
+          <div className="px-5 py-4">
             <SessionChangeForm
               key={JSON.stringify(changeDraft)}
               user={user}
@@ -647,21 +679,18 @@ export default function Assistant() {
             />
           </div>
         </section>
-      ) : (
-        !busy && (
-          <div className="mt-4">
-            <EmptyState
-              icon={Sparkles}
-              title={mode === 'change' ? 'No change draft yet' : 'No draft yet'}
-              description={
-                mode === 'change'
-                  ? 'Describe the change above, or pick a session directly in the change form.'
-                  : 'Describe the request above, then review and edit the extracted fields before validating.'
-              }
-            />
-          </div>
-        )
-      )}
+      ) : !busy ? (
+        <div className="mt-4">
+          <EmptyState
+            title={mode === 'change' ? 'No change draft yet' : 'No draft yet'}
+            description={
+              mode === 'change'
+                ? 'Describe the change above, or pick a session directly in the change form.'
+                : 'Describe the request above, then review and edit the extracted fields before validating.'
+            }
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

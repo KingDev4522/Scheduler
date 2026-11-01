@@ -1,18 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  AlertTriangle,
-  Building2,
-  CalendarCheck2,
-  CheckCircle2,
-  ClipboardCheck,
-  Clock3,
-  XCircle,
-} from 'lucide-react'
 import { ROLE_LABEL, useAuth } from '../lib/auth'
 import { dashboardStats, pendingDecisions, roomUtilisation } from '../lib/selectors'
-import { PageHeader } from '../components/PageHeader'
-import { StatCard } from '../components/StatCard'
 import { EmptyState, ErrorState } from '../components/States'
 import { PageSkeleton } from '../components/Skeletons'
 import { useOfficial } from '../hooks/useOfficial'
@@ -22,6 +11,7 @@ import { ExamWeekOverview } from '../components/ExamWeekOverview'
 import { WeekPicker } from '../components/WeekPicker'
 import { MonthCalendar } from '../components/MonthCalendar'
 import { datasetDay, weekDates, weekLabel } from '../lib/semester'
+import { cn } from '../lib/utils'
 
 type CalendarView = 'week' | 'month'
 
@@ -48,33 +38,27 @@ export default function Dashboard() {
     [official.dataset, official.schedule],
   )
   const data = officialView?.data ?? null
-  const stats = useMemo(
-    () => (data && user ? dashboardStats(data, user) : null),
-    [data, user],
-  )
-  const queue = useMemo(
-    () => (data && user ? pendingDecisions(data, user) : []),
-    [data, user],
-  )
+  const stats = useMemo(() => (data && user ? dashboardStats(data, user) : null), [data, user])
+  const queue = useMemo(() => (data && user ? pendingDecisions(data, user) : []), [data, user])
   const utilisation = useMemo(() => (data ? roomUtilisation(data) : []), [data])
 
   if (!user) return null
 
   if (official.loading && !official.dataset) {
-    return (
-      <PageSkeleton label="Loading your dashboard…" variant="dashboard" cards={4} rows={5} />
-    )
+    return <PageSkeleton label="Loading your dashboard…" variant="dashboard" cards={4} rows={5} />
   }
 
   if (official.error && !official.health) {
     return (
       <div>
-        <PageHeader title="Dashboard" subtitle="Official data is unavailable." />
-        <ErrorState
-          title="Backend not reachable"
-          description={official.error}
-          onRetry={() => void official.refresh()}
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Dashboard</h2>
+        <div className="mt-4">
+          <ErrorState
+            title="Backend not reachable"
+            description={official.error}
+            onRetry={() => void official.refresh()}
+          />
+        </div>
       </div>
     )
   }
@@ -82,20 +66,21 @@ export default function Dashboard() {
   if (!data || !stats || !official.dataset || !official.schedule) {
     return (
       <div>
-        <PageHeader title="Dashboard" subtitle="Generate the official schedule to populate this page." />
-        <EmptyState
-          icon={CalendarCheck2}
-          title="No official schedule yet"
-          description="The dashboard is computed from the official dataset and generated schedule. Generate it from Import / Exports."
-          action={
-            <Link
-              to="/admin"
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Open Import / Exports
-            </Link>
-          }
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Dashboard</h2>
+        <div className="mt-4">
+          <EmptyState
+            title="No official schedule yet"
+            description="The dashboard is computed from the official dataset and generated schedule."
+            action={
+              <Link
+                to="/admin"
+                className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                Open Import / Exports
+              </Link>
+            }
+          />
+        </div>
       </div>
     )
   }
@@ -108,9 +93,7 @@ export default function Dashboard() {
   const facultyFocus =
     user.role === 'faculty'
       ? data.faculty.find((member) =>
-          member.name
-            .toLowerCase()
-            .includes(user.displayName.split(' ').slice(-1)[0]!.toLowerCase()),
+          member.name.toLowerCase().includes(user.displayName.split(' ').slice(-1)[0]!.toLowerCase()),
         )
       : undefined
   const groupFocus = data.groups[0]
@@ -145,95 +128,98 @@ export default function Dashboard() {
     : 'Mon–Fri · P1 08:00–P9 17:00 · lunch 13:00–14:00 · classes only'
   const calendarBadge = isFest ? 'Spectra events' : isExams ? 'Exam week' : 'Recurring template'
 
-  const isAdmin = user.role === 'admin'
   const isFaculty = user.role === 'faculty'
   const isStaffView = user.role === 'event_manager' || isFaculty
+
   const bookingApproved = data.bookings.filter((booking) => booking.status === 'approved').length
   const bookingAlternatives = data.bookings.filter(
     (booking) => booking.status === 'alternative_offered',
   ).length
   const bookingPending = data.bookings.filter((booking) => booking.status === 'pending').length
 
-  const cards = isAdmin
-    ? [
-        { icon: ClipboardCheck, label: 'Pending decisions', value: stats.pendingDecisions, hint: `${stats.actionableDecisions} you can decide`, tone: 'amber' as const },
-        { icon: CalendarCheck2, label: 'Spectra requests', value: stats.spectraActive, hint: `${stats.spectraPending} pending`, tone: 'neutral' as const },
-        { icon: AlertTriangle, label: 'Open conflicts', value: hard, hint: 'official validator', tone: 'rose' as const },
-        { icon: Building2, label: 'Avg room utilisation', value: `${stats.averageUtilisation}%`, hint: `${data.rooms.length} official rooms`, tone: 'emerald' as const },
-      ]
-    : user.role === 'department_coordinator'
-      ? [
-          { icon: ClipboardCheck, label: 'Pending decisions', value: stats.pendingDecisions, hint: `${stats.actionableDecisions} in your scope`, tone: 'amber' as const },
-          { icon: CalendarCheck2, label: 'Spectra requests', value: stats.spectraActive, hint: `${stats.spectraPending} pending`, tone: 'neutral' as const },
-          { icon: AlertTriangle, label: 'Open conflicts', value: hard, hint: 'official validator', tone: 'rose' as const },
-          { icon: Building2, label: 'Avg room utilisation', value: `${stats.averageUtilisation}%`, hint: `${data.rooms.length} official rooms`, tone: 'emerald' as const },
-        ]
-      : isFaculty
-        ? [
-            { icon: CalendarCheck2, label: 'Teaching sessions', value: data.sessions.length, hint: 'official timetable', tone: 'neutral' as const },
-            { icon: Building2, label: 'Rooms', value: data.rooms.length, hint: 'official room inventory', tone: 'emerald' as const },
-            { icon: AlertTriangle, label: 'Open conflicts', value: hard, hint: 'official validator', tone: 'rose' as const },
-            { icon: Clock3, label: 'My requests', value: stats.myPending, hint: 'awaiting a decision', tone: 'amber' as const },
-          ]
-        : [
-            { icon: CalendarCheck2, label: 'Spectra requests', value: stats.spectraActive, hint: 'official board', tone: 'neutral' as const },
-            { icon: CheckCircle2, label: 'Approved', value: bookingApproved, hint: 'solver decisions', tone: 'emerald' as const },
-            { icon: XCircle, label: 'Alternatives', value: bookingAlternatives, hint: 'offered outside window', tone: 'rose' as const },
-            { icon: Clock3, label: 'Pending', value: bookingPending, hint: 'awaiting a decision', tone: 'amber' as const },
-          ]
+  const metrics = [
+    {
+      label: 'Waiting on you',
+      value: stats.pendingDecisions,
+      hint: `${stats.actionableDecisions} you can decide`,
+    },
+    {
+      label: 'Official conflicts',
+      value: hard,
+      hint: conflictRows.length > 0 ? `${conflictRows.length} rule(s) involved` : 'validator clean',
+    },
+    {
+      label: 'Room utilisation',
+      value: `${stats.averageUtilisation}%`,
+      hint: `${data.rooms.length} official venues`,
+    },
+    isFaculty
+      ? {
+          label: 'Your teaching periods',
+          value: data.sessions.reduce((sum, session) => sum + session.periods, 0),
+          hint: `${data.sessions.length} sessions on the grid`,
+        }
+      : {
+          label: 'Venue requests granted',
+          value: bookingApproved,
+          hint: `${bookingAlternatives} alternative · ${bookingPending} open`,
+        },
+  ]
 
   return (
     <div className="cit-page">
-      <PageHeader
-        title={`Welcome back, ${user.displayName}`}
-        subtitle={`${ROLE_LABEL[user.role]}${
-          user.department ? ` · ${user.department} department` : ''
-        } · ${dataset.institute}`}
-      />
-
-      <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Official generated schedule</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              {hard} hard violations · soft {summary.soft_total} · booking score{' '}
-              {summary.bookings?.booking_score ?? '—'} /{' '}
-              {summary.bookings?.booking_score_max_if_all_approved ?? '—'} · proposal{' '}
-              {official.schedule.proposal_status ?? 'none'}
-            </p>
-            <p className="mt-1 text-[11px] text-slate-400">
-              {dataset.dataset_id} · {dataset.source} ·{' '}
-              {dataset.generated_at ? `generated ${new Date(dataset.generated_at).toLocaleString()}` : 'not generated'}
-            </p>
-          </div>
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Dashboard</h2>
+          <p className="mt-1 max-w-[58ch] text-[14px] leading-relaxed text-slate-600">
+            {ROLE_LABEL[user.role]}
+            {user.department ? ` · ${user.department}` : ''} · {dataset.institute} ·{' '}
+            {summary.hard_violation_count} hard violation
+            {summary.hard_violation_count === 1 ? '' : 's'} · booking score{' '}
+            {summary.bookings?.booking_score ?? '–'}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             to="/official"
-            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+            className="hidden h-8 items-center rounded-lg px-2.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
           >
-            Open Official Data →
+            Official data
+          </Link>
+          <Link
+            to={isStaffView ? '/manual' : '/approvals'}
+            className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+          >
+            {isStaffView ? 'Request a venue' : 'Open approvals'}
           </Link>
         </div>
-      </section>
+      </header>
 
-      <div className="cit-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <StatCard key={card.label} {...card} />
-        ))}
-      </div>
-
-      <div className="mt-5">
-        {semester ? (
-          <div className="mb-4">
-            <WeekPicker
-              semester={semester}
-              week={activeWeek}
-              onChange={setSelectedWeek}
-              view={calendarView}
-              onViewChange={setCalendarView}
-            />
+      <dl className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 md:grid-cols-4">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="bg-white px-4 py-3">
+            <dt className="text-[12px] text-slate-500">{metric.label}</dt>
+            <dd className="mt-0.5 text-[24px] font-semibold leading-none tabular-nums text-slate-900">
+              {metric.value}
+            </dd>
+            <p className="mt-1 text-[12px] text-slate-500">{metric.hint}</p>
           </div>
-        ) : null}
+        ))}
+      </dl>
 
+      {semester ? (
+        <div className="mt-4">
+          <WeekPicker
+            semester={semester}
+            week={activeWeek}
+            onChange={setSelectedWeek}
+            view={calendarView}
+            onViewChange={setCalendarView}
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-3">
         {calendarView === 'month' && semester ? (
           <MonthCalendar
             semester={semester}
@@ -262,88 +248,91 @@ export default function Dashboard() {
             weekDates={activeWeekDates}
           />
         )}
-
-        <p className="mt-2 text-[11px] text-slate-400">
-          Classes in this calendar: {focusLabel ?? 'selected group'} · open Timetables for every
-          group, faculty and room view.
+        <p className="mt-2 text-[12px] text-slate-500">
+          Classes in this calendar: {focusLabel ?? 'selected group'} · open Timetables for every group,
+          faculty and venue view.
           {!semester ? ' No calendar dates are available in this dataset.' : ''}
         </p>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <section className="lg:col-span-2">
-          <div className="cit-card flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <h3 className="text-sm font-semibold text-slate-900">
-                {isStaffView ? 'Your pending requests' : 'Pending decisions'}
-              </h3>
-              <Link to="/approvals" className="text-xs font-semibold text-neutral-900 hover:underline">
-                Open approvals →
-              </Link>
-            </div>
-
-            <div className="cit-stagger divide-y divide-slate-100">
-              {queue.length === 0 ? (
-                <div className="px-5 py-6">
-                  <EmptyState
-                    icon={CheckCircle2}
-                    title="Nothing waiting"
-                    description="Official booking decisions are generated by the solver. Ad-hoc manual requests appear in Approvals."
-                  />
-                </div>
-              ) : (
-                queue.map((item) => (
-                  <div key={`${item.kind}-${item.id}`} className="px-5 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800">
-                          <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            {item.kind === 'booking' ? 'Booking' : 'Change'}
-                          </span>
-                          {item.title}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {item.id} · from <span className="font-medium">{item.requester}</span> ·{' '}
-                          {timeAgo(item.submittedAt)}
-                        </p>
-                        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{item.detail}</p>
-                        {item.requestReason && (
-                          <p className="mt-1 text-xs text-slate-600">
-                            <span className="font-semibold">Request reason:</span>{' '}
-                            {item.requestReason}
-                          </p>
-                        )}
-                      </div>
-                      <span className="shrink-0 text-[11px] text-slate-400">{item.canDecide ? 'Actionable' : item.blockedReason}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-200 px-5 py-3">
+            <h3 className="text-[15px] font-semibold text-slate-900">
+              {isStaffView ? 'Your pending requests' : 'Waiting on a decision'}
+            </h3>
+            <Link
+              to="/approvals"
+              className="text-[12px] font-medium text-slate-600 transition-colors hover:text-slate-900"
+            >
+              Open approvals
+            </Link>
           </div>
+
+          {queue.length === 0 ? (
+            <p className="px-5 py-4 text-[13px] text-slate-500">
+              Nothing waiting. Official booking decisions come from the solver; ad-hoc requests appear
+              in Approvals.
+            </p>
+          ) : (
+            <ul className="cit-stagger divide-y divide-slate-100">
+              {queue.map((item) => (
+                <li key={`${item.kind}-${item.id}`} className="px-5 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-semibold text-slate-900">{item.title}</p>
+                      <p className="mt-0.5 text-[12px] text-slate-500">
+                        <span className="tabular-nums">{item.id}</span> · {item.requester} ·{' '}
+                        {timeAgo(item.submittedAt)} ·{' '}
+                        {item.kind === 'booking' ? 'venue request' : 'session change'}
+                      </p>
+                      <p className="mt-1 text-[12px] leading-relaxed text-slate-600">{item.detail}</p>
+                      {item.requestReason ? (
+                        <p className="mt-0.5 text-[12px] leading-relaxed text-slate-700">
+                          {item.requestReason}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 text-right text-[12px] leading-snug',
+                        item.canDecide ? 'text-slate-700' : 'text-slate-400',
+                      )}
+                    >
+                      {item.canDecide ? 'Yours to decide' : item.blockedReason}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
-        <div className="cit-stagger space-y-5">
-          <section className="cit-card rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-900">Room utilisation</h3>
-            <p className="text-xs text-slate-400">Derived from official sessions + approved bookings</p>
-            <ul className="cit-stagger mt-4 space-y-3">
+        <div className="space-y-4">
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h3 className="text-[15px] font-semibold text-slate-900">Room utilisation</h3>
+              <p className="mt-0.5 text-[12px] text-slate-500">
+                Official sessions plus approved bookings.
+              </p>
+            </div>
+            <ul className="divide-y divide-slate-100">
               {[...utilisation]
                 .sort((a, b) => b.percent - a.percent)
                 .slice(0, 5)
                 .map((row) => (
-                  <li key={row.room.id}>
-                    <div className="flex items-baseline justify-between text-xs">
-                      <span className="font-medium text-slate-700">{row.room.name}</span>
-                      <span className="text-slate-400">{row.percent}%</span>
+                  <li key={row.room.id} className="px-4 py-2">
+                    <div className="flex items-baseline justify-between gap-2 text-[12px]">
+                      <span className="truncate text-slate-700">{row.room.name}</span>
+                      <span className="shrink-0 tabular-nums text-slate-500">{row.percent}%</span>
                     </div>
                     <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                       <div
-                        className="h-full rounded-full bg-neutral-500"
+                        className="h-full rounded-full bg-slate-700"
                         style={{ width: `${Math.max(row.percent, 1)}%` }}
                       />
                     </div>
-                    <p className="mt-0.5 text-[10px] text-slate-400">
+                    <p className="mt-1 text-[12px] tabular-nums text-slate-500">
                       {row.occupiedPeriods} of {row.capacityPeriods} weekly periods
                     </p>
                   </li>
@@ -351,28 +340,35 @@ export default function Dashboard() {
             </ul>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-900">Open conflicts</h3>
-            <p className="text-xs text-slate-400">Official validator summary</p>
-            <ul className="cit-stagger mt-3 space-y-3">
-              {conflictRows.length === 0 ? (
-                <li className="text-sm text-slate-400">No hard violations in the generated schedule.</li>
-              ) : (
-                conflictRows.slice(0, 5).map(([rule, count]) => (
-                  <li key={rule} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                    <p className="text-xs font-semibold text-neutral-800">
-                      <span className="mr-1.5 rounded bg-neutral-200 px-1 py-0.5 text-[10px]">{rule}</span>
-                      {count} violation{count === 1 ? '' : 's'}
-                    </p>
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h3 className="text-[15px] font-semibold text-slate-900">Validator</h3>
+              <p className="mt-0.5 text-[12px] text-slate-500">Official hard-constraint report.</p>
+            </div>
+            {conflictRows.length === 0 ? (
+              <p className="px-4 py-3 text-[13px] text-slate-500">
+                No hard violations in the generated schedule.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {conflictRows.slice(0, 5).map(([rule, count]) => (
+                  <li key={rule} className="flex items-baseline justify-between gap-2 px-4 py-2">
+                    <span className="text-[12px] text-slate-700">{rule}</span>
+                    <span className="text-[13px] font-semibold tabular-nums text-rose-700">
+                      {count}
+                    </span>
                   </li>
-                ))
-              )}
-            </ul>
-            <p className="mt-2 text-[11px] text-slate-400">
-              <Link to="/official" className="font-semibold text-neutral-800 hover:underline">
+                ))}
+              </ul>
+            )}
+            <div className="border-t border-slate-100 px-4 py-2">
+              <Link
+                to="/official"
+                className="text-[12px] font-medium text-slate-600 transition-colors hover:text-slate-900"
+              >
                 Inspect the official report
               </Link>
-            </p>
+            </div>
           </section>
         </div>
       </div>

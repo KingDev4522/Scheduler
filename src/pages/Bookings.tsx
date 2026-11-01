@@ -276,7 +276,7 @@ export default function Bookings() {
           >
             {isApprover ? 'Open approvals' : manualLabel}
             {isApprover && pendingInScope > 0 ? (
-              <span className="rounded-full bg-white/20 px-1.5 text-[12px] tabular-nums">
+              <span className="rounded bg-white/20 px-1.5 text-[12px] tabular-nums">
                 {pendingInScope}
               </span>
             ) : null}

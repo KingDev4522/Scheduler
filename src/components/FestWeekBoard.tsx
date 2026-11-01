@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import type { BoardRow } from '../lib/bookingBoard'
-import { formatSlot } from '../lib/bookingBoard'
+import { formatSlot, formatSlotTime } from '../lib/bookingBoard'
 import type { Semester } from '../lib/semester'
 import { formatShortDate, weekDates } from '../lib/semester'
 import { DAYS, type Day } from '../lib/time'
@@ -40,26 +40,38 @@ export function FestWeekBoard({
   return (
     <section
       aria-labelledby="fest-week-heading"
-      className="rounded-xl border border-slate-200 bg-white"
+      className="overflow-hidden rounded-xl border border-slate-200 bg-white"
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3">
-        <h3 id="fest-week-heading" className="text-[15px] font-semibold text-slate-900">
-          The fest week, day by day
-        </h3>
-        <p className="text-[12px] text-slate-500">
-          {rows.length} placed slot{rows.length === 1 ? '' : 's'} · rooms block the same period, so a
-          day can hold several at once
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-200 px-4 py-3">
+        <div>
+          <h3 id="fest-week-heading" className="text-[15px] font-semibold text-slate-900">
+            The fest week, day by day
+          </h3>
+          <p className="mt-0.5 text-[12px] text-slate-500">
+            Every granted slot on the campus period grid · P1–P13, lunch between P5 and P6
+          </p>
+        </div>
+        <p className="text-[12px] tabular-nums text-slate-500">
+          {rows.length} placed · {new Set(rows.map((row) => row.roomName)).size} venues
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-px bg-slate-100 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
         {DAYS.map((day, dayIndex) => {
           const items = byDay.get(day) ?? []
           const date = dates[dayIndex]
           return (
-            <div key={day} className="flex min-w-0 flex-col bg-white p-2.5">
-              <div className="mb-2 flex items-baseline justify-between gap-2 px-1">
-                <span className="text-[12px] font-semibold text-slate-900">
+            <div
+              key={day}
+              className={cn(
+                'flex min-w-0 flex-col border-t border-slate-200',
+                dayIndex === 0 ? 'border-t-0' : '',
+                'sm:border-t-0',
+                dayIndex > 0 ? 'sm:border-l sm:border-slate-200' : '',
+              )}
+            >
+              <div className="flex items-baseline justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                <span className="text-[13px] font-semibold text-slate-900">
                   <span className="sm:hidden">{DAY_FULL[day]}</span>
                   <span className="hidden sm:inline">{day}</span>
                 </span>
@@ -70,9 +82,9 @@ export function FestWeekBoard({
               </div>
 
               {items.length === 0 ? (
-                <p className="px-1 py-2 text-[12px] text-slate-400">No bookings</p>
+                <p className="px-3 py-3 text-[12px] text-slate-400">No bookings</p>
               ) : (
-                <ul className="flex flex-1 flex-col gap-0.5">
+                <ul className="flex-1 divide-y divide-slate-100">
                   {items.map((row, index) => {
                     const active = row.id === selectedId
                     return (
@@ -81,7 +93,9 @@ export function FestWeekBoard({
                           type="button"
                           onClick={() => onSelect(row.id)}
                           aria-pressed={active}
-                          title={`${row.title} · ${row.roomName ?? 'no venue'} · ${formatSlot(row.granted!)}${row.moved ? ' · moved outside the window asked for' : ''}`}
+                          title={`${row.title} · ${row.roomName ?? 'no venue'} · ${formatSlot(row.granted!)} · ${formatSlotTime(row.granted!)}${
+                            row.moved ? ' · moved outside the window asked for' : ''
+                          }`}
                           initial={{ opacity: 0, y: 6 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{
@@ -90,27 +104,28 @@ export function FestWeekBoard({
                             ease: SOFT_EASE,
                           }}
                           className={cn(
-                            'flex w-full rounded-lg border px-2 py-1.5 text-left transition-colors duration-200',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 dark:focus-visible:ring-slate-300 dark:focus-visible:ring-offset-slate-950',
+                            'block w-full px-3 py-2 text-left transition-colors duration-200',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900 dark:focus-visible:ring-slate-300',
                             active
-                              ? 'border-slate-300 bg-slate-50'
+                              ? 'bg-slate-100'
                               : row.moved
-                                ? 'border-transparent bg-amber-50/70 hover:bg-amber-50'
-                                : 'border-transparent hover:border-slate-200 hover:bg-slate-50',
+                                ? 'bg-amber-50/70 hover:bg-amber-50'
+                                : 'hover:bg-slate-50',
                           )}
                         >
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-baseline gap-1.5">
-                              <span className="shrink-0 text-[12px] font-semibold tabular-nums text-slate-900">
-                                P{row.granted!.from}–{row.granted!.to}
-                              </span>
-                              <span className="truncate text-[12px] text-slate-500">
-                                {row.roomName ?? 'No venue'}
-                              </span>
+                          <span className="flex items-baseline gap-1.5">
+                            <span className="shrink-0 text-[12px] font-semibold tabular-nums text-slate-900">
+                              P{row.granted!.from}–{row.granted!.to}
                             </span>
-                            <span className="mt-0.5 block truncate text-[13px] leading-snug text-slate-700">
-                              {row.title}
+                            <span className="truncate text-[12px] tabular-nums text-slate-500">
+                              {formatSlotTime(row.granted!)}
                             </span>
+                          </span>
+                          <span className="mt-0.5 block truncate text-[12px] text-slate-500">
+                            {row.roomName ?? 'No venue'}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[13px] leading-snug text-slate-800">
+                            {row.title}
                           </span>
                         </motion.button>
                       </li>
