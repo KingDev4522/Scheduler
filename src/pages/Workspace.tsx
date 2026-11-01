@@ -14,7 +14,6 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState, StatusNotice } from '../components/States'
 import { PageSkeleton } from '../components/Skeletons'
 import { useAuth } from '../lib/auth'
-import { canCoordinatorDecideSession } from '../lib/departments'
 import {
   api,
   type AvailabilityEntry,
@@ -24,7 +23,9 @@ import {
 } from '../lib/api'
 
 const OFFICIAL_DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI']
-const PERIODS = Array.from({ length: 13 }, (_, index) => index + 1)
+/** Teaching periods only. P10-P13 are event-only and must not be marked as teaching time. */
+const PERIODS = Array.from({ length: 9 }, (_, index) => index + 1)
+const EVENT_PERIODS = [10, 11, 12, 13]
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Request failed.'
@@ -45,6 +46,7 @@ export default function Workspace() {
   const [availabilityName, setAvailabilityName] = useState('')
 
   const [requestText, setRequestText] = useState('')
+  const [changeReason, setChangeReason] = useState('')
   const [changeRequests, setChangeRequests] = useState<ChangeRequestRecord[]>([])
   const [bookings, setBookings] = useState<BookingSubmission[]>([])
   const [policyOrder, setPolicyOrder] = useState<string[]>([])
@@ -121,13 +123,11 @@ export default function Workspace() {
           }
         }
 
-        if (isClub) {
-          try {
-            const result = await api.listBookings(user.username)
-            if (active) setBookings(result.items)
-          } catch {
-            /* ignore */
-          }
+        try {
+          const result = await api.listBookings(user.username)
+          if (active) setBookings(result.items)
+        } catch {
+          /* ignore */
         }
       } finally {
         if (active) setBooting(false)
@@ -144,6 +144,40 @@ export default function Workspace() {
     () => dataset?.entities.faculty.find((member) => member.id === facultyId),
     [dataset, facultyId],
   )
+
+  const decided = useMemo(() => {
+    const me = user?.username ?? ''
+    const rows = [
+      ...bookings
+        .filter((item) => item.requester === me || item.decided_by === me)
+        .map((item) => ({
+          key: `booking-${item.id}`,
+          label: String(item.title ?? item.id),
+          status: item.status,
+          requestReason: String(item.request_reason ?? ''),
+          reason: item.reason ?? '',
+          decidedBy: item.decided_by ?? '',
+          decidedAt: item.decided_at ?? '',
+        })),
+      ...changeRequests
+        .filter((item) => item.requester === me || item.decided_by === me)
+        .map((item) => ({
+          key: `change-${item.id}`,
+          label: item.text,
+          status: item.status,
+          requestReason: String(
+            item.request_reason ?? (item.draft as Record<string, unknown>)?.request_reason ?? '',
+          ),
+          reason: item.reason ?? '',
+          decidedBy: item.decided_by ?? '',
+          decidedAt: item.decided_at ?? '',
+        })),
+    ]
+    return rows
+      .filter((row) => row.status === 'approved' || row.status === 'rejected')
+      .sort((a, b) => String(b.decidedAt || '').localeCompare(String(a.decidedAt || '')))
+      .slice(0, 5)
+  }, [bookings, changeRequests])
 
   if (!user) return null
 
@@ -187,12 +221,25 @@ export default function Workspace() {
       setFlash({ tone: 'error', message: 'Describe the change first.' })
       return
     }
+    if (changeReason.trim().length < 3) {
+      setFlash({
+        tone: 'error',
+        message: 'Add a short reason for this change. The approver sees it.',
+      })
+      return
+    }
     setBusy(true)
     setFlash(null)
     try {
-      const record = await api.createChangeRequest(requestText.trim(), user.username)
+      const record = await api.createChangeRequest(
+        requestText.trim(),
+        user.username,
+        null,
+        changeReason.trim(),
+      )
       setChangeRequests((current) => [record, ...current])
       setRequestText('')
+      setChangeReason('')
       setFlash({
         tone: 'success',
         message: `${record.id} saved for Admin review. Nothing changes until it is approved.`,
@@ -284,6 +331,22 @@ export default function Workspace() {
       />
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+
+      {decided.length > 0 && (
+        <section className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+          <p className="text-xs font-semibold text-emerald-900">Recent decisions on your requests</p>
+          <ul className="mt-1 space-y-1 text-[11px] text-emerald-800">
+            {decided.map((row) => (
+              <li key={row.key}>
+                <span className="font-semibold">{row.label}</span> · {row.status}
+                {row.decidedBy ? ` by ${row.decidedBy}` : ''}
+                {row.requestReason ? ` · request reason: ${row.requestReason}` : ''}
+                {row.reason ? ` · decision: ${row.reason}` : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {(isFaculty || isAdmin) && (
         <section className="cit-card rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -399,6 +462,21 @@ export default function Workspace() {
               )
             })}
           </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Teaching P1–P9 · 08:00–18:00 · lunch 13:00–14:00 between P5/P6. Event-only P10–P13
+            (18:00–22:00) are not teaching periods and are never counted in faculty load.
+          </p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {EVENT_PERIODS.map((period) => (
+              <span
+                key={period}
+                title="Event-only slot; not a teaching period"
+                className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-400"
+              >
+                P{period} · event-only
+              </span>
+            ))}
+          </div>
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -437,6 +515,12 @@ export default function Workspace() {
             onChange={(event) => setRequestText(event.target.value)}
             placeholder="Move CS201 tutorial from Monday P3 to Tuesday P6, room LT-2"
             className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+          <input
+            value={changeReason}
+            onChange={(event) => setChangeReason(event.target.value)}
+            placeholder="Reason for this change (required; the approver sees it)"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <button
             type="button"
@@ -581,16 +665,24 @@ export default function Workspace() {
                         </ul>
                       </div>
                     )}
-                    {record.reason && <p className="mt-1 text-xs text-slate-600">{record.reason}</p>}
+                    {(record.request_reason ||
+                      ((record.draft as Record<string, unknown>)?.request_reason as
+                        | string
+                        | undefined)) && (
+                      <p className="mt-1 text-xs text-slate-700">
+                        <span className="font-semibold">Request reason:</span>{' '}
+                        {record.request_reason ??
+                          ((record.draft as Record<string, unknown>)?.request_reason as string)}
+                      </p>
+                    )}
+                    {record.reason && (
+                      <p className="mt-1 text-xs text-slate-600">
+                        <span className="font-semibold">Decision reason:</span> {record.reason}
+                      </p>
+                    )}
                   </div>
                   {record.status === 'pending' &&
-                    (user.role === 'admin' ||
-                      (user.role === 'department_coordinator' &&
-                        canCoordinatorDecideSession(
-                          user,
-                          dataset,
-                          String((record.draft as Record<string, unknown>)?.session_id ?? ''),
-                        ))) &&
+                    user.role === 'admin' &&
                     record.requester !== user.username && (
                     <div className="flex gap-1.5">
                       <button

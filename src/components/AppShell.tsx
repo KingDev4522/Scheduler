@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useLocation, useOutlet } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronRight } from 'lucide-react'
-import { findNav } from '../lib/nav'
+import { findNav, navLabel } from '../lib/nav'
 import { ROLE_LABEL, useAuth } from '../lib/auth'
 import { KEYS, readJSON, writeJSON } from '../lib/storage'
 import { SOFT_EASE } from '../lib/motion'
@@ -50,7 +50,7 @@ export default function AppShell() {
               aria-hidden
             />
             <h1 className="truncate text-sm font-semibold text-slate-900">
-              {current?.label ?? 'CIT Scheduler'}
+              {current ? (user ? navLabel(current, user.role) : current.label) : 'CIT Scheduler'}
             </h1>
           </nav>
           <div className="ml-auto flex shrink-0 items-center gap-2">

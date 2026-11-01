@@ -39,10 +39,16 @@ export type NavGroup = 'Overview' | 'Scheduling' | 'Workflow' | 'System'
 export interface NavItem {
   path: string
   label: string
+  /** Role-specific wording, e.g. "Venue request" for a club representative. */
+  labelByRole?: Partial<Record<Role, string>>
   icon: LucideIcon
   group: NavGroup
   roles: Role[]
   element: ReactNode
+}
+
+export function navLabel(item: NavItem, role: Role): string {
+  return item.labelByRole?.[role] ?? item.label
 }
 
 /** Single source of truth: sidebar rendering + route table + access control. */
@@ -52,9 +58,30 @@ export const NAV: NavItem[] = [
   { path: '/official', label: 'Official Data', icon: CalendarDays, group: 'Scheduling', roles: ALL, element: <OfficialData /> },
   { path: '/rooms', label: 'Rooms', icon: DoorOpen, group: 'Scheduling', roles: ALL, element: <Rooms /> },
   { path: '/exams', label: 'Exams', icon: GraduationCap, group: 'Scheduling', roles: ADMIN_COORD, element: <Exams /> },
-  { path: '/bookings', label: 'Bookings', icon: CalendarCheck2, group: 'Workflow', roles: ALL, element: <Bookings /> },
-  { path: '/manual', label: 'Manual Booking', icon: CalendarPlus, group: 'Workflow', roles: ALL, element: <ManualBooking /> },
-  { path: '/changes', label: 'Changes', icon: GitCompareArrows, group: 'Workflow', roles: ADMIN_COORD, element: <Changes /> },
+  {
+    path: '/bookings',
+    label: 'Bookings',
+    labelByRole: { faculty: 'My requests', event_manager: 'My requests' },
+    icon: CalendarCheck2,
+    group: 'Workflow',
+    roles: ALL,
+    element: <Bookings />,
+  },
+  {
+    path: '/manual',
+    label: 'Manual Booking',
+    labelByRole: {
+      admin: 'Booking & changes',
+      department_coordinator: 'Department event',
+      faculty: 'Request change',
+      event_manager: 'Venue request',
+    },
+    icon: CalendarPlus,
+    group: 'Workflow',
+    roles: ALL,
+    element: <ManualBooking />,
+  },
+  { path: '/changes', label: 'Changes', icon: GitCompareArrows, group: 'Workflow', roles: ADMIN_ONLY, element: <Changes /> },
   { path: '/assistant', label: 'AI Assistant', icon: Sparkles, group: 'Workflow', roles: ALL, element: <Assistant /> },
   { path: '/workspace', label: 'My Workspace', icon: UserRound, group: 'Workflow', roles: ALL, element: <Workspace /> },
   { path: '/approvals', label: 'Approvals', icon: ClipboardCheck, group: 'Workflow', roles: ADMIN_COORD, element: <Approvals /> },

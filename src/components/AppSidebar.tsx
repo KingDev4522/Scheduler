@@ -27,7 +27,7 @@ import {
 } from './ui/dropdown-menu'
 import { useSidebar } from './ui/sidebar'
 import { ROLE_LABEL, useAuth } from '../lib/auth'
-import { NAV_GROUPS, findNav, navForRole, type NavGroup } from '../lib/nav'
+import { NAV_GROUPS, findNav, navForRole, navLabel, type NavGroup } from '../lib/nav'
 
 const PANEL_WIDTH = 250
 
@@ -329,7 +329,7 @@ export default function AppSidebar() {
                       isActive ? 'font-medium' : 'font-normal'
                     }`}
                   >
-                    {item.label}
+                    {navLabel(item, user.role)}
                   </span>
                 </button>
               </li>

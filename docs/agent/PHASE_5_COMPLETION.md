@@ -5,7 +5,7 @@ external deliverables owned by the team; they are not claimed as done here.
 
 ## Completed locally
 
-- [x] Engine + backend suite passes: **93 tests** (1 skipped because this dataset has no fixed-slot
+- [x] Engine + backend suite passes: **105 tests** (1 skipped because this dataset has no fixed-slot
       sessions for H14), including negative validator tests for every hard rule H1–H14 and every soft
       rule S1–S6, derived-semester date maths, app-level date/week bookings, plus AI
       outage/Hinglish/adversarial cases.

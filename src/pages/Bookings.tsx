@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { CalendarCheck2, Filter, Lock, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState, ErrorState, StatusNotice } from '../components/States'
@@ -9,6 +9,7 @@ import { DecisionDialog } from '../components/DecisionDialog'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
 import { buildOfficialView } from '../lib/official'
+import { api, type BookingSubmission, type ChangeRequestRecord } from '../lib/api'
 import { bookingExplanation } from '../lib/explanations'
 import {
   type AppData,
@@ -79,6 +80,26 @@ export default function Bookings() {
   const [mineOnly, setMineOnly] = useState(false)
   const [target, setTarget] = useState<Booking | null>(null)
   const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [myBookings, setMyBookings] = useState<BookingSubmission[]>([])
+  const [myChanges, setMyChanges] = useState<ChangeRequestRecord[]>([])
+
+  const loadMine = useCallback(async () => {
+    if (!user) return
+    try {
+      const [bookings, changes] = await Promise.all([
+        api.listBookings(user.username),
+        api.changeRequests(user.username),
+      ])
+      setMyBookings(bookings.items)
+      setMyChanges(changes.items)
+    } catch {
+      /* the board still works without the personal list */
+    }
+  }, [user])
+
+  useEffect(() => {
+    void loadMine()
+  }, [loadMine])
 
   const roomFilter = params.get('room') ?? 'all'
 
@@ -204,6 +225,22 @@ export default function Bookings() {
   }
 
   const roomName = (roomId: string) => data.rooms.find((room) => room.id === roomId)?.name ?? roomId
+  const mineBookings = myBookings.filter((item) => item.requester === user.username)
+  const mineChanges = myChanges.filter((item) => item.requester === user.username)
+  const isAdminOrCoordinator =
+    user.role === 'admin' || user.role === 'department_coordinator'
+  const otherBookings = myBookings
+    .filter((item) => item.requester !== user.username)
+    .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1))
+  const pendingOther = otherBookings.filter((item) => item.status === 'pending').length
+  const slotOf = (item: BookingSubmission) => {
+    const week = item.weeks?.[0]
+    const date = item.dates?.[0]
+    const prefix = week ? `W${week} · ` : ''
+    return `${prefix}${date ? `${date} · ` : ''}${item.day ?? '—'} P${item.start_period ?? '—'}–P${
+      item.end_period ?? '—'
+    } · ${item.room_id ?? item.requested_room ?? 'no room'}`
+  }
 
   return (
     <div className="cit-page">
@@ -217,6 +254,98 @@ export default function Bookings() {
       />
 
       {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+
+      {(mineBookings.length > 0 || mineChanges.length > 0) && (
+        <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-semibold text-slate-900">My requests</h3>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Only your own submissions appear here, with the decision reason and approver.
+          </p>
+          <ul className="mt-2 divide-y divide-slate-100">
+            {mineBookings.map((item) => (
+              <li key={item.id} className="py-2 text-xs">
+                <p className="font-medium text-slate-800">
+                  {item.title ?? item.id} · <span className="capitalize text-slate-500">{item.status}</span>
+                </p>
+                <p className="text-slate-500">
+                  {item.id}
+                  {item.request_reason ? ` · request reason: ${item.request_reason}` : ''}
+                  {item.reason ? ` · decision: ${item.reason}` : ''}
+                  {item.decided_by ? ` · by ${item.decided_by}` : ''}
+                </p>
+              </li>
+            ))}
+            {mineChanges.map((item) => (
+              <li key={item.id} className="py-2 text-xs">
+                <p className="font-medium text-slate-800">
+                  {item.text} · <span className="capitalize text-slate-500">{item.status}</span>
+                </p>
+                <p className="text-slate-500">
+                  {item.id}
+                  {item.request_reason ||
+                  ((item.draft as Record<string, unknown>)?.request_reason as string | undefined)
+                    ? ` · request reason: ${
+                        item.request_reason ??
+                        ((item.draft as Record<string, unknown>)?.request_reason as string)
+                      }`
+                    : ''}
+                  {item.reason ? ` · decision: ${item.reason}` : ''}
+                  {item.decided_by ? ` · by ${item.decided_by}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {isAdminOrCoordinator && otherBookings.length > 0 && (
+        <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">
+                Submitted booking requests
+                {pendingOther > 0 ? ` · ${pendingOther} pending` : ''}
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Ad-hoc requests from the manual form or assistant that are in your scope. They are
+                decided in the Approvals inbox.
+              </p>
+            </div>
+            <Link
+              to="/approvals"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
+            >
+              Open approvals →
+            </Link>
+          </div>
+          <ul className="mt-2 divide-y divide-slate-100">
+            {otherBookings.map((item) => (
+              <li key={item.id} className="py-2 text-xs">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="font-medium text-slate-800">
+                    {item.title ?? item.id} ·{' '}
+                    <span className="capitalize text-slate-500">{item.status}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-400">{item.id}</p>
+                </div>
+                <p className="text-slate-500">
+                  {item.requester} · {slotOf(item)}
+                </p>
+                {item.request_reason && (
+                  <p className="text-slate-600">
+                    <span className="font-semibold">Request reason:</span> {item.request_reason}
+                  </p>
+                )}
+                {item.reason && (
+                  <p className="text-slate-500">
+                    <span className="font-semibold">Decision:</span> {item.reason}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <p className="mb-4 text-xs text-slate-500">
         {summary.total} requests visible to you ·{' '}
@@ -245,6 +374,16 @@ export default function Bookings() {
               <span className="font-semibold text-slate-800">Official Spectra board.</span> Solver
               decisions are read-only. Your department's ad-hoc lab bookings are decided in
               Approvals.
+            </span>
+          </p>
+        )}
+        {user.role === 'faculty' && (
+          <p className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" aria-hidden />
+            <span>
+              <span className="font-semibold text-slate-800">Read-only Spectra board.</span> Faculty
+              do not book venues; your session-change requests and their statuses appear in “My
+              requests” above. Use Manual Booking → Request change to move a session.
             </span>
           </p>
         )}
@@ -453,6 +592,12 @@ export default function Bookings() {
                         )}
                       </td>
                       <td className="max-w-[18rem] px-4 py-3">
+                        {booking.requestReason && (
+                          <p className="mb-1 text-xs leading-relaxed text-slate-700">
+                            <span className="font-semibold">Request reason:</span>{' '}
+                            {booking.requestReason}
+                          </p>
+                        )}
                         <p className="text-xs leading-relaxed text-slate-600">
                           {booking.decisionReason ?? booking.note}
                         </p>
@@ -534,7 +679,12 @@ export default function Bookings() {
                     </div>
                   </div>
 
-                  <p className="mt-3 text-xs leading-relaxed text-slate-600">
+                  {booking.requestReason && (
+                    <p className="mt-3 text-xs leading-relaxed text-slate-700">
+                      <span className="font-semibold">Request reason:</span> {booking.requestReason}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
                     {booking.decisionReason ?? booking.note}
                   </p>
                   <details className="mt-1">

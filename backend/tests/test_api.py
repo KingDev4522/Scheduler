@@ -19,7 +19,7 @@ os.environ.setdefault("SEMESTER_START_DATE", "2026-11-02")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from backend.app import app  # noqa: E402
+from backend.app import STATE, app  # noqa: E402
 from backend import store  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -110,6 +110,24 @@ class BackendApiTests(unittest.TestCase):
         self.assertTrue(
             all("dates" not in item for item in dataset["entities"]["booking_requests"])
         )
+
+    def test_room_blocks_are_admin_only_and_reject_conflicts(self) -> None:
+        placements = STATE.get("placements") or {}
+        self.assertTrue(placements, "generate must leave placements in STATE")
+        _session_id, (day, start, room) = next(iter(placements.items()))
+        body = {
+            "room_id": room,
+            "day": day,
+            "periods": [start],
+            "reason": "test block",
+        }
+        denied = self.client.post(
+            "/api/room-blocks", headers={"x-demo-user": "mehul"}, json=body
+        )
+        self.assertEqual(denied.status_code, 403)
+        conflict = self.client.post("/api/room-blocks", headers=ADMIN, json=body)
+        self.assertEqual(conflict.status_code, 422)
+        self.assertIn("conflicts", conflict.json()["detail"])
 
     def test_non_admin_generate_forbidden(self) -> None:
         response = self.client.post("/api/generate", headers={"x-demo-user": "mehul"})

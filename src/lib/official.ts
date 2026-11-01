@@ -127,6 +127,10 @@ export function buildOfficialView(dataset: DatasetInfo, schedule: ScheduleRespon
       status,
       expectedAttendees: request?.attendance ?? 0,
       note: String(row.reason ?? decision?.reason ?? ''),
+      requestReason:
+        String(
+          (request as { request_reason?: unknown } | undefined)?.request_reason ?? '',
+        ).trim() || undefined,
       updatedAt: Date.now(),
       ...(row.status === 'approved' || row.status === 'alternative_offered'
         ? { decidedBy: 'debjeet', decisionReason: String(row.reason ?? decision?.reason ?? '') }

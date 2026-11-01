@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Accessibility,
@@ -17,6 +17,11 @@ import { DAYS, type Day } from '../lib/time'
 import { freeWindowLabel, roomAvailability } from '../lib/selectors'
 import { useOfficial } from '../hooks/useOfficial'
 import { buildOfficialView } from '../lib/official'
+import { useAuth } from '../lib/auth'
+import { WeekPicker } from '../components/WeekPicker'
+import { RoomOccupancyGrid } from '../components/RoomOccupancyGrid'
+import { RoomBlocks } from '../components/RoomBlocks'
+import type { RoomBlock } from '../lib/api'
 
 type TypeFilter = RoomType | 'all'
 
@@ -32,6 +37,7 @@ const EMPTY_DATA: AppData = {
 }
 
 export default function Rooms() {
+  const { user } = useAuth()
   const official = useOfficial()
   const officialView = useMemo(
     () =>
@@ -47,6 +53,16 @@ export default function Rooms() {
   const [accessibleOnly, setAccessibleOnly] = useState(false)
   const [featureFilter, setFeatureFilter] = useState('all')
   const [day, setDay] = useState<Day>('Mon')
+  const [week, setWeek] = useState(0)
+  const [expandedRoom, setExpandedRoom] = useState<string | null>(null)
+  const [blocks, setBlocks] = useState<RoomBlock[]>([])
+  const semester = official.dataset?.semester ?? null
+  const activeWeek = week || semester?.fest_week || 1
+  const canSeeDetail = user?.role === 'admin' || user?.role === 'department_coordinator'
+
+  useEffect(() => {
+    setBlocks(official.dataset?.entities.room_unavailability ?? [])
+  }, [official.dataset])
 
   const features = useMemo(
     () => Array.from(new Set(data.rooms.flatMap((room) => room.features))).sort(),
@@ -131,6 +147,48 @@ export default function Rooms() {
       <p className="mb-4 text-xs text-slate-500">
         {data.rooms.length} rooms · pending requests do not block a room until approved
       </p>
+
+      {semester && (
+        <div className="mb-4">
+          <WeekPicker
+            semester={semester}
+            week={activeWeek}
+            onChange={setWeek}
+            view="week"
+            onViewChange={() => {}}
+            showViewToggle={false}
+          />
+        </div>
+      )}
+
+      {expandedRoom && canSeeDetail && semester
+        ? (() => {
+            const room = data.rooms.find((item) => item.id === expandedRoom)
+            if (!room) return null
+            return (
+              <div className="mb-5">
+                <div className="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedRoom(null)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  >
+                    Close occupancy
+                  </button>
+                </div>
+                <RoomOccupancyGrid
+                  room={room}
+                  week={activeWeek}
+                  semester={semester}
+                  sessions={data.sessions}
+                  bookings={data.bookings}
+                  exams={official.schedule?.schedule.exams ?? []}
+                  blocks={blocks}
+                />
+              </div>
+            )
+          })()
+        : null}
 
       {/* Filters */}
       <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -344,12 +402,23 @@ export default function Rooms() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          to={`/bookings?room=${encodeURIComponent(room.id)}`}
-                          className="inline-block rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
-                        >
-                          Requests
-                        </Link>
+                        <div className="flex justify-end gap-1.5">
+                          {canSeeDetail && (
+                            <button
+                              type="button"
+                              onClick={() => setExpandedRoom(room.id)}
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                            >
+                              Occupancy
+                            </button>
+                          )}
+                          <Link
+                            to={`/bookings?room=${encodeURIComponent(room.id)}`}
+                            className="inline-block rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
+                          >
+                            Requests
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -417,17 +486,38 @@ export default function Rooms() {
                     ))}
                   </div>
 
-                  <Link
-                    to={`/bookings?room=${encodeURIComponent(room.id)}`}
-                    className="mt-3 inline-block rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
-                  >
-                    View requests for {room.name}
-                  </Link>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {canSeeDetail && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRoom(room.id)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                      >
+                        Occupancy
+                      </button>
+                    )}
+                    <Link
+                      to={`/bookings?room=${encodeURIComponent(room.id)}`}
+                      className="inline-block rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-800 transition-colors hover:bg-neutral-100"
+                    >
+                      View requests for {room.name}
+                    </Link>
+                  </div>
                 </article>
               )
             })}
           </div>
         </>
+      )}
+
+      {user && user.role === 'admin' && (
+        <RoomBlocks
+          user={user}
+          rooms={data.rooms.map((room) => ({ id: room.id, name: room.name }))}
+          days={official.dataset?.entities.calendar.days ?? []}
+          blocks={blocks}
+          onChanged={setBlocks}
+        />
       )}
     </div>
   )

@@ -5,8 +5,12 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState, ErrorState, StatusNotice } from '../components/States'
 import { PageSkeleton } from '../components/Skeletons'
 import { BookingDraftForm, type BookingFormOptions } from '../components/BookingDraftForm'
+import { SessionChangeForm, type SessionChangeInitial } from '../components/SessionChangeForm'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
+import { useAvailability } from '../hooks/useAvailability'
+import { buildOfficialView } from '../lib/official'
+import { sessionDepartment } from '../lib/departments'
 import {
   api,
   type AssistantParseResult,
@@ -33,6 +37,7 @@ function toDraft(parsed: AssistantParseResult): BookingDraft {
     : []
   return {
     title: typeof raw.title === 'string' && raw.title.trim() ? raw.title : 'Assistant request',
+    request_reason: typeof raw.request_reason === 'string' ? raw.request_reason : '',
     attendance: typeof raw.attendance === 'number' ? raw.attendance : null,
     duration_periods: typeof raw.duration_periods === 'number' ? raw.duration_periods : null,
     windows,
@@ -44,12 +49,25 @@ function toDraft(parsed: AssistantParseResult): BookingDraft {
   }
 }
 
+type AssistantMode = 'booking' | 'change'
+
 export default function Assistant() {
   const { user } = useAuth()
   const official = useOfficial()
+  const isFaculty = user?.role === 'faculty'
+  const isClub = user?.role === 'event_manager'
+  const isAdmin = user?.role === 'admin'
+  const isCoordinator = user?.role === 'department_coordinator'
+  const availableModes: AssistantMode[] = isFaculty
+    ? ['change']
+    : isClub
+      ? ['booking']
+      : ['booking', 'change']
+  const [mode, setMode] = useState<AssistantMode>(isFaculty ? 'change' : 'booking')
   const [text, setText] = useState('')
   const [parsed, setParsed] = useState<AssistantParseResult | null>(null)
   const [draft, setDraft] = useState<BookingDraft | null>(null)
+  const [changeDraft, setChangeDraft] = useState<SessionChangeInitial | null>(null)
   const [followUp, setFollowUp] = useState<string[]>([])
   const [missing, setMissing] = useState<MissingField[]>([])
   const [validation, setValidation] = useState<BookingValidation | null>(null)
@@ -84,11 +102,26 @@ export default function Assistant() {
     if (!raw) return
     sessionStorage.removeItem('cit-assistant-draft')
     try {
-      const stored = JSON.parse(raw) as { text?: string; parsed?: AssistantParseResult }
+      const stored = JSON.parse(raw) as {
+        text?: string
+        parsed?: AssistantParseResult
+        kind?: string
+      }
       if (stored.parsed) {
+        const isChange =
+          stored.kind === 'change' ||
+          typeof (stored.parsed.draft as Record<string, unknown>)?.kind === 'string'
         setText(stored.text ?? '')
         setParsed(stored.parsed)
-        setDraft(toDraft(stored.parsed))
+        if (isChange) {
+          setMode('change')
+          setChangeDraft(stored.parsed.draft as SessionChangeInitial)
+          setDraft(null)
+        } else {
+          setMode('booking')
+          setDraft(toDraft(stored.parsed))
+          setChangeDraft(null)
+        }
         setFollowUp(stored.parsed.follow_up ?? [])
         setMissing(stored.parsed.missing ?? [])
       }
@@ -105,10 +138,47 @@ export default function Assistant() {
       roomTypes: Array.from(new Set(rooms.map((room) => room.type))).sort(),
       needs: Array.from(new Set(rooms.flatMap((room) => room.features))).concat('accessible').sort(),
       groups: official.dataset.entities.student_groups.map((group) => group.id),
-      rooms: rooms.map((room) => ({ id: room.id, name: room.name })),
+      rooms: rooms.map((room) => ({
+        id: room.id,
+        name: room.name,
+        capacity: room.capacity,
+        type: room.type,
+        accessible: room.accessible,
+        features: room.features,
+      })),
       semester: official.dataset.semester ?? null,
     }
   }, [official.dataset])
+
+  const officialView = useMemo(
+    () =>
+      official.dataset && official.schedule
+        ? buildOfficialView(official.dataset, official.schedule)
+        : null,
+    [official.dataset, official.schedule],
+  )
+  const data = officialView?.data
+  const facultyFocus = useMemo(() => {
+    if (!user || user.role !== 'faculty') return undefined
+    const last = user.displayName.split(' ').slice(-1)[0]?.toLowerCase() ?? ''
+    return data?.faculty.find((member) => member.name.toLowerCase().includes(last))
+  }, [data?.faculty, user])
+  const changeSessions = useMemo(() => {
+    if (!data) return []
+    if (isFaculty) return data.sessions.filter((session) => session.facultyId === facultyFocus?.id)
+    if (isCoordinator) {
+      return data.sessions.filter(
+        (session) => sessionDepartment(official.dataset, session.id) === user?.department,
+      )
+    }
+    return data.sessions
+  }, [data, isFaculty, isCoordinator, facultyFocus?.id, official.dataset, user?.department])
+  const { checks, loading: availabilityLoading } = useAvailability(draft, user, mode === 'booking')
+
+  useEffect(() => {
+    if (!availableModes.includes(mode)) setMode(availableModes[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.role])
 
   if (!user) return null
 
@@ -127,17 +197,28 @@ export default function Assistant() {
     try {
       const result = await api.assistantParse(
         input,
-        'booking',
+        mode,
         user.username,
-        previous as Record<string, unknown> | null,
+        mode === 'booking' ? (previous as Record<string, unknown> | null) : null,
       )
       setParsed(result)
-      setDraft(toDraft(result))
+      if (mode === 'booking') {
+        setDraft(toDraft(result))
+        setChangeDraft(null)
+      } else {
+              setChangeDraft({
+                ...(result.draft as SessionChangeInitial),
+                request_reason:
+                  (result.draft as Record<string, unknown>)?.request_reason as string | undefined,
+              })
+        setDraft(null)
+      }
       setFollowUp(result.follow_up)
       setMissing(result.missing ?? [])
     } catch (caught) {
       setParsed(null)
       setDraft(null)
+      setChangeDraft(null)
       setMissing([])
       setError(
         `${caught instanceof Error ? caught.message : 'The assistant is unavailable.'} You can still use the manual form.`,
@@ -147,25 +228,26 @@ export default function Assistant() {
     }
   }
 
-  const validate = async () => {
-    if (!draft) return
+  const validate = async (): Promise<BookingValidation | null> => {
+    if (!draft) return null
     setBusy(true)
     setError(null)
     try {
-      setValidation(
-        await api.validateBooking(
-          { ...draft, ...(slot ?? {}), raw_text: text },
-          user.username,
-        ),
+      const result = await api.validateBooking(
+        { ...draft, ...(slot ?? {}), raw_text: text },
+        user.username,
       )
+      setValidation(result)
+      return result
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Validation failed.')
+      return null
     } finally {
       setBusy(false)
     }
   }
 
-  const submit = async () => {
+  const submitNow = async () => {
     if (!draft) return
     setBusy(true)
     setError(null)
@@ -189,6 +271,35 @@ export default function Assistant() {
       setError(caught instanceof Error ? caught.message : 'Submission failed.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  const submit = async () => {
+    if (!draft) {
+      setError('There is no draft yet. Describe the request above or use the manual form.')
+      return
+    }
+    if (!draft.request_reason?.trim()) {
+      setError(
+        'Add a short reason for this request. The approver sees it, so it cannot be blank.',
+      )
+      return
+    }
+    if (validation?.ok) {
+      await submitNow()
+      return
+    }
+    const result = await validate()
+    if (result?.ok) {
+      await submitNow()
+      return
+    }
+    if (result) {
+      setError(
+        result.alternatives.length > 0
+          ? 'No exact slot is selected yet. Choose one of the feasible alternatives below, then submit again.'
+          : 'This request does not pass the hard checks yet. Fix the listed issues and submit again.',
+      )
     }
   }
 
@@ -251,11 +362,60 @@ export default function Assistant() {
     <div className="cit-page">
       <PageHeader
         title="AI Assistant"
-        subtitle="Describe a request in English or Hinglish. Gemini extracts a draft; the deterministic validator decides what is possible."
+        subtitle={
+          mode === 'change'
+            ? 'Describe a schedule change in English or Hinglish. Gemini extracts the target; Python checks every hard rule before anything is submitted.'
+            : 'Describe a venue request in English or Hinglish. Gemini extracts a draft; the deterministic validator decides what is possible.'
+        }
       />
 
-      {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
+      {flash && (
+        <StatusNotice tone={flash.tone}>
+          {flash.message}
+          {flash.tone === 'success' && (
+            <>
+              {' '}
+              <Link to="/approvals" className="font-semibold underline">
+                Track it in Approvals →
+              </Link>
+            </>
+          )}
+        </StatusNotice>
+      )}
       {error && <StatusNotice tone="error">{error}</StatusNotice>}
+
+      {availableModes.length > 1 && (
+        <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+          {availableModes.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => {
+                setMode(option)
+                setDraft(null)
+                setChangeDraft(null)
+                setParsed(null)
+                setMissing([])
+                setFollowUp([])
+                setValidation(null)
+                setSlot(null)
+                setText('')
+                setClarification('')
+              }}
+              aria-pressed={mode === option}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold ${
+                mode === option ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+              }`}
+            >
+              {option === 'booking'
+                ? isCoordinator
+                  ? 'Department event'
+                  : 'Event booking'
+                : 'Session change'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <section className="cit-card rounded-xl border border-neutral-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -278,7 +438,11 @@ export default function Assistant() {
           rows={4}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="e.g. seminar hall kal shaam 6 baje, 2 ghante, 100 log, mic chahiye"
+          placeholder={
+            mode === 'change'
+              ? 'e.g. Move CS201 from Monday P3 to Tuesday P6, room LT-2'
+              : 'e.g. seminar hall kal shaam 6 baje, 2 ghante, 100 log, mic chahiye'
+          }
           className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400"
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -288,7 +452,15 @@ export default function Assistant() {
             disabled={busy}
             className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {busy ? 'Interpreting…' : draft ? 'Refine draft' : 'Interpret request'}
+            {busy
+              ? 'Interpreting…'
+              : mode === 'change'
+                ? changeDraft
+                  ? 'Refine change'
+                  : 'Interpret change'
+                : draft
+                  ? 'Refine draft'
+                  : 'Interpret request'}
           </button>
           <Link
             to="/manual"
@@ -296,12 +468,13 @@ export default function Assistant() {
           >
             Use the manual form
           </Link>
-          {(draft || text) && (
+          {(draft || text || changeDraft) && (
             <button
               type="button"
               onClick={() => {
                 setText('')
                 setDraft(null)
+                setChangeDraft(null)
                 setParsed(null)
                 setMissing([])
                 setFollowUp([])
@@ -350,6 +523,11 @@ export default function Assistant() {
               ))}
             </ul>
           )}
+          {parsed?.fallback_reason && (
+            <p className="mt-1 break-words text-[10px] text-amber-700">
+              {parsed.fallback_reason.slice(0, 220)}
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap gap-2">
             <input
               value={clarification}
@@ -375,7 +553,7 @@ export default function Assistant() {
         </section>
       )}
 
-      {draft && options ? (
+      {mode === 'booking' && draft && options ? (
         <section className="cit-anim-pop mt-4 rounded-xl border border-neutral-200 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-neutral-900">Editable draft</h3>
@@ -387,6 +565,9 @@ export default function Assistant() {
             <BookingDraftForm
               draft={draft}
               options={options}
+              showGroups={isAdmin}
+              availability={checks}
+              availabilityLoading={availabilityLoading}
               onChange={(next) => {
                 setDraft(next)
                 setSlot(null)
@@ -406,11 +587,16 @@ export default function Assistant() {
             <button
               type="button"
               onClick={() => void submit()}
-              disabled={busy || !validation?.ok}
+              disabled={busy}
               className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               Submit for approval
             </button>
+            <span className="self-center text-xs text-neutral-500">
+              {validation?.ok
+                ? 'A validated slot is selected.'
+                : 'Submit validates first; choose a feasible alternative if none is selected.'}
+            </span>
           </div>
 
           {validation && (
@@ -438,13 +624,40 @@ export default function Assistant() {
             </div>
           )}
         </section>
+      ) : mode === 'change' && options ? (
+        <section className="cit-anim-pop mt-4 rounded-xl border border-neutral-200 bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-neutral-900">Change draft</h3>
+            <span className="text-[11px] text-neutral-500">
+              {parsed ? `source: ${parsed.model}` : 'manual selection'}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Pick the session and target slot. Red blocks submission; orange is a soft warning that is
+            still reviewable.
+          </p>
+          <div className="mt-4">
+            <SessionChangeForm
+              key={JSON.stringify(changeDraft)}
+              user={user}
+              sessions={changeSessions}
+              rooms={options.rooms}
+              semester={options.semester}
+              initial={changeDraft}
+            />
+          </div>
+        </section>
       ) : (
         !busy && (
           <div className="mt-4">
             <EmptyState
               icon={Sparkles}
-              title="No draft yet"
-              description="Describe the request above, then review and edit the extracted fields before validating."
+              title={mode === 'change' ? 'No change draft yet' : 'No draft yet'}
+              description={
+                mode === 'change'
+                  ? 'Describe the change above, or pick a session directly in the change form.'
+                  : 'Describe the request above, then review and edit the extracted fields before validating.'
+              }
             />
           </div>
         )

@@ -115,6 +115,59 @@ export interface OfficialEntities {
     fest_week?: string | null
     exam_week?: { days: string[]; sessions: { id: string; start: string; end: string }[] }
   }
+  room_unavailability?: RoomBlock[]
+}
+
+export interface RoomBlock {
+  room_id: string
+  day: string
+  periods: number[]
+  reason: string
+}
+
+export interface OccupancyEntry {
+  kind: string
+  title: string
+  detail: string
+  severity: 'blocked' | 'warning'
+  periods: number[]
+  owner?: string | null
+  status?: string | null
+  source_id?: string | null
+}
+
+export interface OccupancyCheck {
+  date: string
+  week: number | null
+  day: string
+  room_id?: string
+  room_name?: string
+  capacity?: number | null
+  type?: string | null
+  severity: 'free' | 'warning' | 'blocked'
+  message: string
+  entries: OccupancyEntry[]
+  candidates?: {
+    room_id: string
+    room_name: string
+    capacity: number | null
+    type: string | null
+    severity: 'free' | 'warning' | 'blocked'
+    message: string
+    entries: OccupancyEntry[]
+  }[]
+}
+
+export interface AvailabilityResponse {
+  checks: OccupancyCheck[]
+}
+
+export interface SessionAvailability {
+  ok: boolean
+  blocked: { rule: string; detail: string }[]
+  warnings: string[]
+  alternatives: BookingAlternative[]
+  current?: [string, number, string] | null
 }
 
 export interface DatasetInfo {
@@ -238,6 +291,8 @@ export interface BookingWindow {
 
 export interface BookingDraft {
   title: string
+  /** Requester's stated why; separate from the approver's decision reason. */
+  request_reason?: string
   attendance: number | null
   duration_periods: number | null
   windows: BookingWindow[]
@@ -287,6 +342,8 @@ export interface AssistantParseResult {
   follow_up: string[]
   /** Every unresolved field, in one pass. */
   missing?: MissingField[]
+  /** Provider reason when the local-rules fallback ran (e.g. 429 quota). */
+  fallback_reason?: string | null
 }
 
 export interface AvailabilityEntry {
@@ -300,6 +357,8 @@ export interface ChangeRequestRecord {
   requester: string
   role: string
   text: string
+  /** Why the requester asked for the change. */
+  request_reason?: string | null
   draft: Record<string, unknown>
   follow_up: string[]
   alternatives?: {
@@ -308,6 +367,7 @@ export interface ChangeRequestRecord {
     start_period: number
     room_id: string
   }[]
+  warnings?: string[]
   model: string
   status: 'pending' | 'approved' | 'rejected'
   submitted_at: string
@@ -326,6 +386,9 @@ export interface BookingSubmission extends Record<string, unknown> {
   start_period?: number
   end_period?: number
   room_id?: string
+  /** Requester's stated why, retained after the decision. */
+  request_reason?: string | null
+  /** Approver's decision reason. */
   reason?: string | null
   decided_by?: string | null
   windows?: BookingWindow[]
@@ -461,21 +524,36 @@ export const api = {
       {},
       user,
     ),
-  assistantParse: (
+  assistantParse: async (
     text: string,
     kind: 'booking' | 'change' = 'booking',
     user = 'debjeet',
     previousDraft?: Record<string, unknown> | null,
-  ) =>
-    request<AssistantParseResult>(
-      '/api/assistant/parse',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text, kind, previous_draft: previousDraft ?? null }),
-      },
-      user,
-    ),
+  ) => {
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 60_000)
+    try {
+      return await request<AssistantParseResult>(
+        '/api/assistant/parse',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text, kind, previous_draft: previousDraft ?? null }),
+          signal: controller.signal,
+        },
+        user,
+      )
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          'The assistant timed out. Try again or use the manual form; nothing was submitted.',
+        )
+      }
+      throw error
+    } finally {
+      window.clearTimeout(timer)
+    }
+  },
   validateBooking: (payload: BookingProposalPayload, user = 'debjeet') =>
     request<BookingValidation>(
       '/api/bookings/validate',
@@ -528,14 +606,96 @@ export const api = {
     ),
   changeRequests: (user = 'debjeet') =>
     request<{ items: ChangeRequestRecord[] }>('/api/change-requests', {}, user),
-  createChangeRequest: (text: string, user = 'debjeet') =>
+  createChangeRequest: (
+    text: string,
+    user = 'debjeet',
+    draft?: Record<string, unknown> | null,
+    requestReason?: string | null,
+  ) =>
     request<ChangeRequestRecord>(
       '/api/change-requests',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          draft: draft ?? null,
+          request_reason: requestReason ?? (draft?.request_reason as string | undefined) ?? null,
+        }),
       },
+      user,
+    ),
+  changePreview: (
+    text: string,
+    user = 'debjeet',
+    draft?: Record<string, unknown> | null,
+  ) =>
+    request<
+      SessionAvailability & {
+        draft: Record<string, unknown>
+        follow_up: string[]
+        model: string
+      }
+    >(
+      '/api/change-requests/preview',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text, draft: draft ?? null }),
+      },
+      user,
+    ),
+  availability: (
+    payload: {
+      dates: string[]
+      from_period: number
+      to_period: number
+      room_id?: string | null
+      room_types?: string[]
+      attendance?: number | null
+      needs?: string[]
+      mandatory_for_groups?: string[]
+    },
+    user = 'debjeet',
+  ) =>
+    request<AvailabilityResponse>(
+      '/api/availability',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      user,
+    ),
+  sessionAvailability: (
+    payload: { session_id: string; day: string; start_period: number; room_id: string },
+    user = 'debjeet',
+  ) =>
+    request<SessionAvailability>(
+      '/api/session-availability',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      user,
+    ),
+  roomBlocks: (user = 'debjeet') =>
+    request<{ items: RoomBlock[] }>('/api/room-blocks', {}, user),
+  addRoomBlock: (block: RoomBlock, user = 'debjeet') =>
+    request<{ ok: boolean; items: RoomBlock[] }>(
+      '/api/room-blocks',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(block),
+      },
+      user,
+    ),
+  deleteRoomBlock: (index: number, user = 'debjeet') =>
+    request<{ ok: boolean; items: RoomBlock[] }>(
+      `/api/room-blocks/${index}`,
+      { method: 'DELETE' },
       user,
     ),
   decideChangeRequest: (

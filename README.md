@@ -113,8 +113,8 @@ Docker Compose. `GEMINI_API_KEY` is optional — manual booking and local parsin
 | `SEMESTER_START_DATE` | `2026-11-02` | Week-1 Monday for the display calendar (dataset ships no dates) |
 | `TEAM_NAME` | `CIT Scheduler` | Team name written into `schedule.json` |
 | `GEMINI_API_KEY` | empty | Server-side Gemini key; never exposed to the browser |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Preferred extraction model |
-| `GEMINI_MODELS` | 2.5 → 3.6 → 3.5 → 3.8 flash | Ordered outage fallbacks |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | Preferred extraction model (`2.5-flash` is retired; `3.8-flash` can 503 under load) |
+| `GEMINI_MODELS` | 3.5 → 3.6 → 3.8 flash | Ordered outage fallbacks; free-tier quota is ~20 requests/day/model |
 | `SESSION_SECRET` | random per process | HMAC key for demo session tokens |
 | `SESSION_TTL_SECONDS` | `28800` | Token lifetime |
 | `DEMO_PASSWORD` | `1234` | Demo account password |
@@ -242,7 +242,7 @@ npm test                  # frontend Vitest
 npm run build             # TypeScript + production build
 ```
 
-Current local suite: **93 Python tests** (1 skipped because this dataset has no fixed-slot sessions
+Current local suite: **105 Python tests** (1 skipped because this dataset has no fixed-slot sessions
 for H14) and **17 frontend tests**. The negative-constraint suite
 proves the official validator actually rejects every hard rule it can trigger (H1–H13; H14 skipped
 when absent) and detects every soft rule S1–S6. Solver tests use the committed canonical exports;
@@ -253,15 +253,41 @@ The backend tests use disposable databases under the system temp directory, so t
 
 ## Roles and screens
 
-- **Admin** — dashboard, official data, generate/import/reset, bookings, manual booking, approvals,
-  changes, role workspace, priority/proposal controls.
-- **Department Coordinator** — department-scoped timetable/approvals, department lab booking
-  decisions, manual booking, session-change requests.
-- **Faculty** — personal timetable, unavailability, session-change request, AI assistant, workspace.
-- **Club Representative** — natural-language/manual booking, official Spectra board, booking history
-  and cancellation, AI assistant, workspace.
+- **Admin** — everything: event booking with any priority category, session changes, **all approvals
+  (Pending / History tabs)**, changes, official data, generate/import/reset, priority policy, and
+  **permanent room blocks**.
+- **Department Coordinator** — **department-event** booking + department session changes; decides
+  **department lab bookings only**; sees only their own requests plus dept-lab approvals they can
+  decide (and their own decisions), never another role's inbox.
+- **Faculty** — personal timetable, unavailability (**P1–P9 only**; P10–P13 shown event-only),
+  **session-change requests** (hard conflicts red, soft warnings orange), read-only Spectra board and
+  own request statuses. No event booking.
+- **Club Representative** — **club venue request**, own request statuses/cancellation, read-only
+  Spectra board. No approvals and no session changes.
+
+### Role-aware booking and live occupancy
+
+- Manual Booking and the AI Assistant configure themselves by role: club → venue request;
+  coordinator → department event + session change; faculty → **change only**; admin → all.
+- **Live availability** below the form: exact room + week + weekday + period matching. **Red** =
+  teaching class, approved event, exam, maintenance or a **permanent room block** (submission
+  blocked); **orange** = another person's pending request (submit allowed; priority/approval
+  decides); **green** = free. Each entry names the course/faculty/group, event/requester, or exam.
+- **Room capacity** is shown in the room picker (`Name — 500 seats · auditorium`) and in a capacity
+  card (`400 / 500 · 100 spare` or `exceeds by …`), so attendance is never arbitrary.
+- **Admin occupancy detail**: Rooms → Week 1–8 → **Occupancy** grid per room (classes, events, exams,
+  blocks, lunch, event-only band). Admin can add/remove permanent room blocks; they are hard
+  constraints and are enforced immediately.
+- The dataset has **189 sessions = 243 teaching hours/week**. P1–P9 are teaching (08:00–18:00, lunch
+  13:00–14:00); P10–P13 are event-only (18:00–22:00) and never count as teaching load. Events are
+  shown in clock time/hours; nothing past 22:00 is invented.
 
 ## Known limitations
+
+- **Gemini free tier** is currently ~20 requests/day/model. When it is exhausted (HTTP 429) or
+  a model is retired (e.g. `gemini-2.5-flash` → 404), the app falls back to the deterministic
+  local parser, still returns an editable draft, and now displays the provider reason. Use a
+  billed key (or a fresh project) for the LLM path during judging; the manual form never needs AI.
 
 - Live deployment and the ≤5-minute video are external deliverables; not included in this repo state.
   The Dockerfile is production-ready and exposes `/api/health` for a host health check.

@@ -80,6 +80,8 @@ export interface Booking {
   status: BookingStatus
   expectedAttendees: number
   note: string
+  /** Why the requester asked for this booking (ad-hoc requests). */
+  requestReason?: string
   updatedAt: number
   decidedBy?: string
   decidedAt?: number

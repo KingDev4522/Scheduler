@@ -307,6 +307,12 @@ export default function Dashboard() {
                           {timeAgo(item.submittedAt)}
                         </p>
                         <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{item.detail}</p>
+                        {item.requestReason && (
+                          <p className="mt-1 text-xs text-slate-600">
+                            <span className="font-semibold">Request reason:</span>{' '}
+                            {item.requestReason}
+                          </p>
+                        )}
                       </div>
                       <span className="shrink-0 text-[11px] text-slate-400">{item.canDecide ? 'Actionable' : item.blockedReason}</span>
                     </div>

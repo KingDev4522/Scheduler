@@ -13,7 +13,7 @@ os.environ.setdefault("ALLOW_DEMO_HEADER", "1")
 from fastapi.testclient import TestClient
 
 from backend import store
-from backend.app import app
+from backend.app import STATE, app
 from backend.assistant import ParsedDraft
 
 
@@ -69,22 +69,25 @@ def test_faculty_availability_is_scoped_and_validated() -> None:
 
 
 def test_change_request_lifecycle_and_self_approval_guard() -> None:
-    draft = ParsedDraft(
-        draft={
-            "kind": "move_session",
-            "session_id": "CS201-L1",
-            "course_id": "CS201",
-            "groups": [],
-            "day": "TUE",
-            "start_period": 6,
-            "room_id": None,
-        },
-        follow_up=[],
-        model="test",
-    )
     with TestClient(app) as client:
         faculty = _login(client, "ananya")
         admin = _login(client, "debjeet")
+        # Ananya owns CS101-A-L1 (F01); target its current slot so the move is legal.
+        current = (STATE.get("placements") or {}).get("CS101-A-L1")
+        day, start, room = current if current else ("TUE", 6, None)
+        draft = ParsedDraft(
+            draft={
+                "kind": "move_session",
+                "session_id": "CS101-A-L1",
+                "course_id": "CS101",
+                "groups": [],
+                "day": day,
+                "start_period": start,
+                "room_id": room,
+            },
+            follow_up=[],
+            model="test",
+        )
         with patch("backend.app.parse_change_request", return_value=draft):
             created = client.post(
                 "/api/change-requests",

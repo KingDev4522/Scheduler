@@ -4,6 +4,7 @@ import type { BookingDraft, BookingWindow } from '../lib/api'
 import { PERIOD_TIMES } from '../lib/time'
 import { SOFT_EASE } from '../lib/motion'
 import type { Semester } from '../lib/semester'
+import type { OccupancyCheck } from '../lib/api'
 import {
   dateToWeek,
   datasetDay,
@@ -14,13 +15,21 @@ import {
   timeFromPeriod,
 } from '../lib/semester'
 import { DatePickerCalendar } from './DatePickerCalendar'
+import { AvailabilityPanel } from './AvailabilityPanel'
 
 export interface BookingFormOptions {
   days: string[]
   roomTypes: string[]
   needs: string[]
   groups: string[]
-  rooms: { id: string; name: string }[]
+  rooms: {
+    id: string
+    name: string
+    capacity: number
+    type: string
+    accessible: boolean
+    features: string[]
+  }[]
   semester: Semester | null
 }
 
@@ -47,10 +56,18 @@ export function BookingDraftForm({
   draft,
   onChange,
   options,
+  showGroups = false,
+  availability = null,
+  availabilityLoading = false,
 }: {
   draft: BookingDraft
   onChange: (draft: BookingDraft) => void
   options: BookingFormOptions
+  /** Admin-only: keep selected student groups free (H13). */
+  showGroups?: boolean
+  /** Live occupancy for the selected dates/time/room. */
+  availability?: OccupancyCheck[] | null
+  availabilityLoading?: boolean
 }) {
   const update = <K extends keyof BookingDraft>(key: K, value: BookingDraft[K]) =>
     onChange({ ...draft, [key]: value })
@@ -72,6 +89,15 @@ export function BookingDraftForm({
   const resolved = resolveWindow(startTime, endTime)
   const fromPeriod = resolved.error ? firstWindow?.from_period ?? 10 : resolved.from_period
   const toPeriod = resolved.error ? firstWindow?.to_period ?? 11 : resolved.to_period
+  const selectedRoom = options.rooms.find((room) => room.id === draft.requested_room)
+  const overCapacity =
+    selectedRoom !== undefined &&
+    draft.attendance !== null &&
+    draft.attendance > selectedRoom.capacity
+  const spare =
+    selectedRoom !== undefined && draft.attendance !== null
+      ? selectedRoom.capacity - draft.attendance
+      : null
 
   const setDates = (next: string[]) => {
     onChange({
@@ -124,6 +150,24 @@ export function BookingDraftForm({
             className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="booking-reason" className="mb-1 block text-xs font-medium text-neutral-600">
+          Reason for this request <span className="text-rose-600">*</span>
+        </label>
+        <textarea
+          id="booking-reason"
+          rows={2}
+          value={draft.request_reason ?? ''}
+          onChange={(event) => update('request_reason', event.target.value)}
+          placeholder="Why is this venue needed? e.g. Club orientation for first-year students."
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800"
+        />
+        <p className="mt-1 text-[11px] text-neutral-500">
+          Shown to the approver and kept with the request after the decision. Do not put a decision
+          here; the approver writes that separately.
+        </p>
       </div>
 
       <fieldset>
@@ -213,6 +257,15 @@ export function BookingDraftForm({
         </div>
       )}
 
+      <div>
+        <p className="mb-1 text-xs font-medium text-neutral-600">What is already booked at this slot</p>
+        <AvailabilityPanel
+          checks={availability}
+          loading={availabilityLoading}
+          hint="Pick date(s), time and (optionally) a room to see the existing class, event, exam or block."
+        />
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <fieldset>
           <legend className="mb-2 text-xs font-medium text-neutral-600">Room types</legend>
@@ -249,7 +302,7 @@ export function BookingDraftForm({
         </fieldset>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-3 ${showGroups ? 'sm:grid-cols-2' : ''}`}>
         <div>
           <label htmlFor="booking-room" className="mb-1 block text-xs font-medium text-neutral-600">
             Preferred room (optional)
@@ -263,34 +316,72 @@ export function BookingDraftForm({
             <option value="">Any suitable room</option>
             {options.rooms.map((room) => (
               <option key={room.id} value={room.id}>
-                {room.name}
+                {room.name} — {room.capacity} seats · {room.type}
               </option>
             ))}
           </select>
+          {selectedRoom ? (
+            <div
+              className={`mt-2 rounded-lg border px-2.5 py-1.5 text-[11px] ${
+                overCapacity
+                  ? 'border-rose-300 bg-rose-50 text-rose-800'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              }`}
+            >
+              <p className="font-semibold">
+                {selectedRoom.name} · {selectedRoom.capacity} seats · {selectedRoom.type}
+                {selectedRoom.accessible ? ' · accessible' : ''}
+              </p>
+              <p>
+                {draft.attendance !== null
+                  ? overCapacity
+                    ? `Attendance ${draft.attendance} exceeds capacity by ${
+                        draft.attendance - selectedRoom.capacity
+                      }.`
+                    : `Attendance ${draft.attendance} · ${spare} seat(s) spare.`
+                  : `Capacity ${selectedRoom.capacity}; enter the attendance to compare.`}
+              </p>
+              {selectedRoom.features.length > 0 && (
+                <p className="text-[10px] opacity-80">Features: {selectedRoom.features.join(', ')}</p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {draft.attendance !== null
+                ? `Needs a room with at least ${draft.attendance} seats.`
+                : 'Pick a room to see its capacity.'}
+            </p>
+          )}
         </div>
-        <div>
-          <label htmlFor="booking-groups" className="mb-1 block text-xs font-medium text-neutral-600">
-            Groups that must be free (optional)
-          </label>
-          <select
-            id="booking-groups"
-            multiple
-            value={draft.mandatory_for_groups}
-            onChange={(event) =>
-              update(
-                'mandatory_for_groups',
-                Array.from(event.target.selectedOptions).map((option) => option.value),
-              )
-            }
-            className="h-24 w-full rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs"
-          >
-            {options.groups.map((group) => (
-              <option key={group} value={group}>
-                {group}
-              </option>
-            ))}
-          </select>
-        </div>
+        {showGroups && (
+          <div>
+            <label htmlFor="booking-groups" className="mb-1 block text-xs font-medium text-neutral-600">
+              Groups that must stay free (admin only)
+            </label>
+            <select
+              id="booking-groups"
+              multiple
+              value={draft.mandatory_for_groups}
+              onChange={(event) =>
+                update(
+                  'mandatory_for_groups',
+                  Array.from(event.target.selectedOptions).map((option) => option.value),
+                )
+              }
+              className="h-24 w-full rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs"
+            >
+              {options.groups.map((group) => (
+                <option key={group} value={group}>
+                  {group}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Use only when the event needs these students to be free (H13). The booking is blocked
+              if they have a class at the chosen slot.
+            </p>
+          </div>
+        )}
       </div>
 
       <AnimatePresence>

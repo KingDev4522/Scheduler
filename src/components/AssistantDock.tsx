@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Mic, MicOff, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
+import { ArrowRight, Mic, MicOff, Send, Sparkles, Volume2, VolumeX, X } from 'lucide-react'
 import { api, type AssistantParseResult } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { Particles } from './Particles'
@@ -55,6 +55,16 @@ function recognitionCtor(): RecognitionCtor | null {
 function draftSummary(parsed: AssistantParseResult): string[] {
   const raw = parsed.draft as Record<string, unknown>
   const lines: string[] = []
+  if (typeof raw.kind === 'string') {
+    lines.push(`Change: ${raw.kind.replace(/_/g, ' ')}`)
+    if (typeof raw.session_id === 'string' && raw.session_id) lines.push(`Session: ${raw.session_id}`)
+    if (typeof raw.course_id === 'string' && raw.course_id) lines.push(`Course: ${raw.course_id}`)
+    if (typeof raw.day === 'string' || typeof raw.start_period === 'number') {
+      lines.push(`Target: ${raw.day ?? '—'} P${raw.start_period ?? '—'}`)
+    }
+    if (typeof raw.room_id === 'string' && raw.room_id) lines.push(`Room: ${raw.room_id}`)
+    return lines
+  }
   if (typeof raw.title === 'string') lines.push(`Title: ${raw.title}`)
   if (typeof raw.attendance === 'number') lines.push(`Attendance: ${raw.attendance}`)
   if (typeof raw.duration_periods === 'number') lines.push(`Duration: ${raw.duration_periods} periods`)
@@ -67,6 +77,12 @@ function draftSummary(parsed: AssistantParseResult): string[] {
         })
         .join(', ')}`,
     )
+  }
+  if (typeof raw.request_reason === 'string' && raw.request_reason.trim()) {
+    lines.push(`Reason: ${raw.request_reason}`)
+  }
+  if (Array.isArray(raw.dates) && raw.dates.length > 0) {
+    lines.push(`Date(s): ${raw.dates.filter((value) => typeof value === 'string').join(', ')}`)
   }
   if (Array.isArray(raw.room_types) && raw.room_types.length > 0) {
     lines.push(`Room types: ${raw.room_types.join(', ')}`)
@@ -86,6 +102,7 @@ export function AssistantDock() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [parsed, setParsed] = useState<AssistantParseResult | null>(null)
+  const [parsedText, setParsedText] = useState('')
   const [followUp, setFollowUp] = useState<string[]>([])
   const [voiceReplies, setVoiceReplies] = useState(true)
   const recognitionRef = useRef<RecognitionLike | null>(null)
@@ -171,6 +188,7 @@ export function AssistantDock() {
     setOpen(true)
     setError(null)
     setParsed(null)
+    setParsedText('')
     setFollowUp([])
     if (isMobile) {
       setMode('type')
@@ -212,10 +230,14 @@ export function AssistantDock() {
     setBusy(true)
     setError(null)
     setParsed(null)
+    setParsedText('')
     setFollowUp([])
     try {
-      const result = await api.assistantParse(value, 'booking', user.username)
+      // Faculty request schedule changes; only venue roles get a booking draft.
+      const kind = user.role === 'faculty' ? 'change' : 'booking'
+      const result = await api.assistantParse(value, kind, user.username)
       setParsed(result)
+      setParsedText(value)
       setFollowUp(result.follow_up)
       speak(result.follow_up.length ? result.follow_up[0] : 'Draft ready. Review it before submitting.')
     } catch (caught) {
@@ -234,11 +256,18 @@ export function AssistantDock() {
     if (!parsed) return
     sessionStorage.setItem(
       'cit-assistant-draft',
-      JSON.stringify({ text, parsed, at: Date.now() }),
+      JSON.stringify({
+        text: parsedText || text,
+        parsed,
+        kind: user.role === 'faculty' ? 'change' : 'booking',
+        at: Date.now(),
+      }),
     )
     navigate('/assistant')
     setOpen(false)
   }
+
+  const draftIsCurrent = Boolean(parsed && parsedText === text.trim())
 
   return (
     <AnimatePresence mode="wait">
@@ -352,7 +381,11 @@ export function AssistantDock() {
                 rows={3}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                placeholder="e.g. Need a room for 45 people on Tuesday 6 to 8 pm, projector please."
+                placeholder={
+                  user.role === 'faculty'
+                    ? 'e.g. Move CS201 from Monday P3 to Tuesday P6, room LT-2'
+                    : 'e.g. Need a room for 45 people on Tuesday 6 to 8 pm, projector please.'
+                }
                 className="mt-3 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-800 placeholder:text-neutral-400"
               />
             ) : (
@@ -377,6 +410,12 @@ export function AssistantDock() {
                   {listening ? 'Stop listening' : 'Start listening'}
                 </button>
               </div>
+            )}
+
+            {user.role === 'faculty' && (
+              <p className="mt-1 text-[10px] text-neutral-500">
+                Faculty requests are schedule changes; venue booking is disabled for this role.
+              </p>
             )}
 
             {error && (
@@ -409,9 +448,14 @@ export function AssistantDock() {
                   ))}
                 </ul>
                 {parsed.source !== 'gemini' && (
-                  <p className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
-                    Gemini is temporarily unavailable — parsed locally. Review every field.
-                  </p>
+                  <div className="mt-1.5 rounded bg-amber-50 px-2 py-1 text-[10px] text-amber-800">
+                    <p>Gemini is temporarily unavailable — parsed locally. Review every field.</p>
+                    {parsed.fallback_reason && (
+                      <p className="mt-0.5 break-words text-[9px] opacity-80">
+                        {parsed.fallback_reason.slice(0, 220)}
+                      </p>
+                    )}
+                  </div>
                 )}
                 <div className="mt-2 flex gap-2">
                   <button
@@ -438,15 +482,32 @@ export function AssistantDock() {
             <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => void send()}
+                onClick={() => {
+                  // A completed draft must never re-call Gemini; go to review.
+                  if (draftIsCurrent) {
+                    review()
+                    return
+                  }
+                  void send()
+                }}
                 disabled={busy}
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
               >
-                <Send className="h-3.5 w-3.5" aria-hidden />
-                {busy ? 'Interpreting…' : 'Send'}
+                {draftIsCurrent ? (
+                  <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <Send className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {busy
+                  ? 'Interpreting…'
+                  : draftIsCurrent
+                    ? 'Review & continue'
+                    : parsed
+                      ? 'Re-interpret'
+                      : 'Interpret'}
               </button>
               <span className="text-[10px] text-neutral-400">
-                Nothing is submitted until you review and confirm.
+                Nothing is submitted until you review and confirm on the Assistant page.
               </span>
             </div>
           </motion.div>

@@ -72,6 +72,8 @@ export interface PendingDecision {
   title: string
   requester: string
   detail: string
+  /** Why the requester asked (ad-hoc bookings); shown before deciding. */
+  requestReason?: string
   conflicts: string[]
   submittedAt: number
   canDecide: boolean
@@ -100,6 +102,7 @@ export function pendingDecisions(data: AppData, user: SessionUser): PendingDecis
       title: booking.title,
       requester: booking.requester,
       detail: `${booking.organizer} · ${bookingLocation(data, booking)} · ${booking.expectedAttendees} expected`,
+      requestReason: booking.requestReason,
       conflicts: bookingConflicts,
       submittedAt: booking.updatedAt,
       canDecide: permission.allowed,

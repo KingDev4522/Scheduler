@@ -22,14 +22,15 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from .semester import derive_semester, weeks_for_dates
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# gemini-2.5-flash is retired for new keys (HTTP 404 "no longer available").
 DEFAULT_CHAIN = [
     GEMINI_MODEL,
     "gemini-3.8-flash",
     "gemini-3.5-flash",
-    "gemini-2.5-flash",
+    "gemini-3.6-flash",
 ]
 
 
@@ -57,6 +58,7 @@ class WindowModel(BaseModel):
 
 class BookingDraftModel(BaseModel):
     title: str | None = None
+    request_reason: str | None = None
     attendance: int | None = None
     duration_periods: int | None = None
     windows: list[WindowModel] = Field(default_factory=list)
@@ -82,6 +84,7 @@ class BookingDraftModel(BaseModel):
 
 class ChangeDraftModel(BaseModel):
     kind: str = "move_session"
+    request_reason: str | None = None
     session_id: str | None = None
     course_id: str | None = None
     groups: list[str] = Field(default_factory=list)
@@ -103,6 +106,8 @@ class ParsedDraft:
     model: str = GEMINI_MODEL
     # Every unresolved field, in one pass: [{field, question, options?}].
     missing: list[dict[str, Any]] = field(default_factory=list)
+    # Why the local fallback ran, when it did (provider status/model), for the UI.
+    fallback_reason: str | None = None
 
 
 def configured() -> bool:
@@ -135,7 +140,15 @@ def _call_gemini(prompt: str, system: str) -> tuple[dict[str, Any], str]:
                     continue
                 break
             if response.status_code != 200:
-                errors.append(f"{model}: HTTP {response.status_code}")
+                detail = ""
+                try:
+                    detail = str((response.json().get("error") or {}).get("message") or "")
+                except (ValueError, AttributeError):
+                    detail = ""
+                detail = re.sub(r"\s+", " ", detail).strip()[:160]
+                errors.append(
+                    f"{model}: HTTP {response.status_code}" + (f" — {detail}" if detail else "")
+                )
                 if response.status_code in RETRYABLE_STATUS and attempt == 0:
                     time.sleep(0.6)
                     continue
@@ -160,8 +173,9 @@ def _call_gemini(prompt: str, system: str) -> tuple[dict[str, Any], str]:
                 errors.append(f"{model}: non-object draft")
                 break
             return value, model
+    unique_errors = list(dict.fromkeys(errors))
     raise AssistantUnavailable(
-        "Gemini unavailable after fallbacks (" + "; ".join(errors[-5:]) + ")"
+        "Gemini unavailable after fallbacks (" + "; ".join(unique_errors[-6:]) + ")"
     )
 
 
@@ -217,13 +231,15 @@ BOOKING_PROMPT = """Dataset context
 
 Task
 Convert the venue-booking request below into exactly this JSON object:
-{{"title": string, "attendance": integer|null, "duration_periods": integer|null,
+{{"title": string, "request_reason": string|null, "attendance": integer|null,
+ "duration_periods": integer|null,
  "windows": [{{"day": "MON|TUE|WED|THU|FRI", "from_period": integer, "to_period": integer}}],
  "dates": [string], "room_types": [string], "needs": [string], "requested_room": string|null,
  "mandatory_for_groups": [string], "follow_up": [string]}}
 
 Guidance
 - title: a short, neutral event name taken from the request.
+- request_reason: the requester's own stated purpose/justification for the booking ("because", "so that", "for the ..."). Quote or closely paraphrase ONLY what is stated; never invent one. Leave null when the request gives no reason; the form asks for it before submission.
 - attendance: the stated head count, not an estimate.
 - duration_periods: one period is one hour and MUST equal to_period − from_period + 1 for the window. Never invent a duration that disagrees with the window. When a clock range is given, treat it as occupancy: "6 to 8 pm" occupies P10 and P11, so from_period is 10, to_period is 11 and duration_periods is 2.
 - windows: every day/time range the requester allows. Use P10–P13 for evening events.
@@ -250,11 +266,13 @@ CHANGE_PROMPT = """Dataset context
 
 Task
 Convert the schedule-change request below into exactly this JSON object:
-{{"kind": "move_session|cancel_session|extra_session", "session_id": string|null,
- "course_id": string|null, "groups": [string], "day": "MON|TUE|WED|THU|FRI"|null,
- "start_period": integer|null, "room_id": string|null, "follow_up": [string]}}
+{{"kind": "move_session|cancel_session|extra_session", "request_reason": string|null,
+ "session_id": string|null, "course_id": string|null, "groups": [string],
+ "day": "MON|TUE|WED|THU|FRI"|null, "start_period": integer|null,
+ "room_id": string|null, "follow_up": [string]}}
 
 Guidance
+- request_reason: the requester's own stated reason for the change, quoted or closely paraphrased; never invent one. Leave null when absent; the form asks for it before submission.
 - Resolve the target session only when it is unambiguous from the request and context.
 - A move needs a new day and start period; a room is optional.
 - An extra session needs a course, group(s), duration and preferred window.
@@ -308,6 +326,11 @@ RANGE_RE = re.compile(
     r"(?<!\d)(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*"
     r"(?:to|till|until|through|and|se|–|-)\s*"
     r"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+    re.IGNORECASE,
+)
+# "P3 to P5", "P3-P5", "period 3 to 5" — period notation, not clock time.
+PERIOD_RANGE_RE = re.compile(
+    r"\bp\s*(\d{1,2})\s*(?:to|till|until|through|se|[–-])\s*p?\s*(\d{1,2})\b",
     re.IGNORECASE,
 )
 
@@ -418,6 +441,20 @@ def _infer_meridiem(text: str, explicit: str) -> str:
 
 def _local_window(text: str, duration: int | None = None) -> dict[str, Any] | None:
     lower = text.lower()
+    period_range = PERIOD_RANGE_RE.search(text)
+    if period_range:
+        low = max(1, min(13, int(period_range.group(1))))
+        high = max(1, min(13, int(period_range.group(2))))
+        if high < low:
+            low, high = high, low
+        return {"from_period": low, "to_period": high}
+
+    single_period = re.search(r"\bp\s*(\d{1,2})\b", text, re.IGNORECASE)
+    if single_period:
+        start = max(1, min(13, int(single_period.group(1))))
+        last = start + (max(duration, 1) - 1 if duration else 0)
+        return {"from_period": start, "to_period": max(start, min(13, last))}
+
     phrase_windows = (
         (("after lunch",), 6, 13),
         (("morning", "subah"), 1, 5),
@@ -500,6 +537,19 @@ def _local_title(text: str) -> str:
     cleaned = re.sub(r"^(a|an|the)\s+", "", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned[:70].strip(" .,-")
     return (cleaned[:1].upper() + cleaned[1:]) if cleaned else "Untitled request"
+
+
+def _local_reason(text: str) -> str:
+    """Only extract an explicitly stated reason; never infer one."""
+    match = re.search(
+        r"\b(?:because|since|so that|justification|reason|purpose)\b\s*[:\-]?\s*(.+)",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return ""
+    value = re.split(r"(?<=[.!?])\s+|\n", match.group(1).strip(), maxsplit=1)[0]
+    return value.strip(" .,-;:\"'")[:300]
 
 
 def _local_room(data, text: str) -> str | None:
@@ -615,6 +665,7 @@ def _local_booking_draft(data, text: str) -> dict[str, Any]:
 
     return {
         "title": _local_title(text),
+        "request_reason": _local_reason(text),
         "attendance": attendance,
         "duration_periods": duration,
         "windows": windows,
@@ -778,6 +829,12 @@ def _normalise_booking(
         or (len(new_title) <= 24 and bool(answer) and answer.lower().startswith(new_title.lower()))
     )
     title = (prev_title if (echoed and prev_title) else new_title) or prev_title or "Untitled request"
+    prev_reason = prev.get("request_reason")
+    request_reason = (
+        (model.request_reason or "").strip()
+        or (prev_reason.strip() if isinstance(prev_reason, str) else "")
+        or _local_reason(text)
+    )[:500]
     # The window is an *allowed* range, not the event length; never derive the
     # duration from its width (e.g. "after lunch" is P6-P13 but not 8 periods).
     duration = model.duration_periods if model.duration_periods is not None else prev_int("duration_periods")
@@ -823,6 +880,7 @@ def _normalise_booking(
 
     draft = {
         "title": title,
+        "request_reason": request_reason,
         "attendance": attendance,
         "duration_periods": duration,
         "windows": windows,
@@ -832,7 +890,14 @@ def _normalise_booking(
         "requested_room": requested_room,
         "mandatory_for_groups": groups,
     }
-    follow_up = list(dict.fromkeys([*model.follow_up, *(item["question"] for item in missing)]))
+    # When every core field is resolved, drop model questions that are already
+    # answered (e.g. "specify the room type" after room_types was returned).
+    core_complete = bool(windows and room_types and attendance and duration)
+    follow_up = (
+        []
+        if core_complete and not missing
+        else list(dict.fromkeys([*model.follow_up, *(item["question"] for item in missing)]))
+    )
     return ParsedDraft(draft=draft, follow_up=follow_up, model=model_name, missing=missing)
 
 
@@ -862,6 +927,7 @@ def parse_booking_request(
             raise AssistantUnavailable(
                 f"{error}; local parser failed: {local_error}"
             ) from error
+        parsed.fallback_reason = str(error)
         parsed.follow_up.insert(
             0,
             "Gemini is temporarily unavailable; this draft was parsed locally. Review every field.",
@@ -907,6 +973,7 @@ def _normalise_change(
     groups = [value for value in model.groups if value in data.groups]
     draft = {
         "kind": model.kind if model.kind in ("move_session", "cancel_session", "extra_session") else "move_session",
+        "request_reason": (model.request_reason or "").strip()[:500],
         "session_id": session_id,
         "course_id": model.course_id,
         "groups": groups,
@@ -947,6 +1014,7 @@ def _local_change_draft(data, text: str) -> dict[str, Any]:
     window = _local_window(text)
     return {
         "kind": kind,
+        "request_reason": _local_reason(text),
         "session_id": next((sid for sid in data.sessions if mentions(sid)), None),
         "course_id": next((cid for cid in data.courses if mentions(cid)), None),
         "groups": [gid for gid in data.groups if mentions(gid)],
@@ -973,6 +1041,7 @@ def parse_change_request(data, text: str) -> ParsedDraft:
             raise AssistantUnavailable(
                 f"{error}; local parser failed: {local_error}"
             ) from error
+        parsed.fallback_reason = str(error)
         parsed.follow_up.insert(
             0,
             "Gemini is temporarily unavailable; this draft was parsed locally. Review every field.",

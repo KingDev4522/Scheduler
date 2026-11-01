@@ -7,10 +7,7 @@ import { DecisionDialog, type Decision } from '../components/DecisionDialog'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
 import { api, type BookingSubmission, type ChangeRequestRecord } from '../lib/api'
-import {
-  canCoordinatorDecideRoom,
-  canCoordinatorDecideSession,
-} from '../lib/departments'
+import { canCoordinatorDecideRoom } from '../lib/departments'
 
 type Tab = 'pending' | 'history'
 type KindFilter = 'all' | 'booking' | 'change'
@@ -21,6 +18,8 @@ interface QueueItem {
   title: string
   requester: string
   detail: string
+  /** Why the requester asked; distinct from the decision reason. */
+  requestReason?: string
   at: number
   status: string
   canDecide: boolean
@@ -82,12 +81,16 @@ export default function Approvals() {
         !self &&
         (user.role === 'admin' ||
           (user.role === 'department_coordinator' && canCoordinatorDecideRoom(user, roomId)))
+      const requestReason = String(submission.request_reason ?? '').trim()
       out.push({
         kind: 'booking',
         id: submission.id,
         title: String(submission.title ?? submission.id),
         requester: String(submission.requester ?? 'unknown'),
-        detail: `${roomId || 'no room'} · ${submission.day ?? '—'} P${submission.start_period ?? '—'}–P${submission.end_period ?? '—'} · ${submission.attendance ?? '—'} expected`,
+        detail: `${roomId || 'no room'} · ${submission.day ?? '—'} P${submission.start_period ?? '—'}–P${submission.end_period ?? '—'} · ${submission.attendance ?? '—'} expected${
+          requestReason ? ` · requester reason: ${requestReason}` : ''
+        }`,
+        requestReason,
         at: new Date(submission.submitted_at ?? Date.now()).getTime(),
         status: submission.status,
         canDecide,
@@ -102,25 +105,28 @@ export default function Approvals() {
     for (const change of changes) {
       const sessionId = String((change.draft as Record<string, unknown>)?.session_id ?? '')
       const self = change.requester.toLowerCase() === user.username.toLowerCase()
-      const canDecide =
-        !self &&
-        (user.role === 'admin' ||
-          (user.role === 'department_coordinator' &&
-            canCoordinatorDecideSession(user, official.dataset, sessionId)))
+      // PS: Admin approves timetable changes; coordinators request them.
+      const canDecide = !self && user.role === 'admin'
+      const requestReason = String(
+        change.request_reason ??
+          (change.draft as Record<string, unknown>)?.request_reason ??
+          '',
+      ).trim()
       out.push({
         kind: 'change',
         id: change.id,
         title: change.text,
         requester: change.requester,
-        detail: `${String(change.draft.kind ?? 'change')} · ${sessionId || 'no session'} · ${change.follow_up?.length ? `${change.follow_up.length} clarification(s)` : 'draft ready'}`,
+        detail: `${String(change.draft.kind ?? 'change')} · ${sessionId || 'no session'} · ${change.follow_up?.length ? `${change.follow_up.length} clarification(s)` : 'draft ready'}${
+          requestReason ? ` · requester reason: ${requestReason}` : ''
+        }`,
+        requestReason,
         at: new Date(change.submitted_at).getTime(),
         status: change.status,
         canDecide,
         blockedReason: self
           ? 'You cannot decide your own request.'
-          : user.role === 'admin'
-            ? undefined
-            : 'Only the owning department coordinator may decide this session.',
+          : 'Timetable changes are decided by Admin only.',
         raw: change,
       })
     }
@@ -129,8 +135,18 @@ export default function Approvals() {
 
   if (!user) return null
 
-  const pending = items.filter((item) => item.status === 'pending')
-  const history = items.filter((item) => item.status !== 'pending')
+  // Admin sees everyone; a coordinator only sees their own plus the department
+  // lab bookings they are allowed to decide, and the decisions they made.
+  const scoped = items.filter((item) => {
+    if (user.role === 'admin') return true
+    if (user.role !== 'department_coordinator') return false
+    if (item.requester === user.username) return true
+    if (item.kind === 'booking' && item.canDecide) return true
+    return String((item.raw as { decided_by?: string | null }).decided_by ?? '') === user.username
+  })
+
+  const pending = scoped.filter((item) => item.status === 'pending')
+  const history = scoped.filter((item) => item.status !== 'pending')
   const filteredPending = pending.filter((item) => kindFilter === 'all' || item.kind === kindFilter)
   const filteredHistory = history.filter((item) => kindFilter === 'all' || item.kind === kindFilter)
 
@@ -255,7 +271,7 @@ export default function Approvals() {
         <span className="text-xs text-slate-500">
           {user.role === 'admin'
             ? 'Admin decides every item; your own requests stay locked.'
-            : 'Your scope covers your department; Admin decides the rest.'}
+            : 'You decide your department’s lab bookings; Admin decides timetable changes and everything else.'}
         </span>
         <Link to="/official" className="ml-auto text-xs font-semibold text-neutral-900 hover:underline">
           Official report →
@@ -287,6 +303,11 @@ export default function Approvals() {
                       {item.id} · requester <span className="font-medium text-slate-700">{item.requester}</span> · {timeAgo(item.at)}
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600">{item.detail}</p>
+                    {item.requestReason && (
+                      <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                        <span className="font-semibold">Request reason:</span> {item.requestReason}
+                      </p>
+                    )}
                   </div>
                   {item.canDecide ? (
                     <button
@@ -326,6 +347,17 @@ export default function Approvals() {
                       {item.id} · requester {item.requester} · {timeAgo(item.at)}
                     </p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-600">{item.detail}</p>
+                    {item.requestReason && (
+                      <p className="mt-1 text-xs text-slate-600">
+                        <span className="font-semibold">Request reason:</span> {item.requestReason}
+                      </p>
+                    )}
+                    {String((item.raw as { reason?: unknown }).reason ?? '').trim() && (
+                      <p className="mt-0.5 text-xs text-slate-600">
+                        <span className="font-semibold">Decision reason:</span>{' '}
+                        {String((item.raw as { reason?: unknown }).reason)}
+                      </p>
+                    )}
                   </div>
                   <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-neutral-100 px-2.5 py-0.5 text-[11px] font-semibold text-neutral-800">
                     {item.status === 'approved' ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}

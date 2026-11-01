@@ -45,6 +45,7 @@ from solver.weekly import solve_weekly
 from . import store
 from .console import banner, done, error, install_sarcastic_access_logs, rule, step, warn
 from .semester import derive_semester, weeks_for_dates
+from .occupancy import build_availability, build_session_availability
 from .assistant import (
     GEMINI_MODEL,
     AssistantUnavailable,
@@ -246,6 +247,31 @@ def _require_admin(user: str) -> str:
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
     return name
+
+
+def _submission_room_id(item: dict) -> str:
+    return str(item.get("room_id") or item.get("requested_room") or "")
+
+
+def _scoped_submissions(role: str, name: str, items: list[dict]) -> list[dict]:
+    """Admin sees all; a coordinator sees their own + their department's labs."""
+    if role == "admin":
+        return items
+    if role == "department_coordinator":
+        return [
+            item
+            for item in items
+            if item.get("requester") == name
+            or _coordinator_can_decide_room(name, _submission_room_id(item))
+        ]
+    return [item for item in items if item.get("requester") == name]
+
+
+def _scoped_changes(role: str, name: str, items: list[dict]) -> list[dict]:
+    """Change requests are visible to the requester and to Admin (who decides them)."""
+    if role == "admin":
+        return items
+    return [item for item in items if item.get("requester") == name]
 
 
 def _check_dataset(raw: Any) -> list[str]:
@@ -803,6 +829,7 @@ def dataset(x_demo_user: str = Header(default="debjeet")) -> dict:
             "booking_requests": raw["booking_requests"],
             "exams": raw["exams"],
             "calendar": raw["calendar"],
+            "room_unavailability": raw.get("room_unavailability", []),
         },
     }
 
@@ -1166,6 +1193,7 @@ def _proposal_from_payload(payload: dict, actor_name: str, role: str) -> Booking
         requested_room=payload.get("requested_room") or payload.get("room_id") or None,
         mandatory_for_groups=list(payload.get("mandatory_for_groups") or []),
         raw_text=str(payload.get("raw_text") or ""),
+        request_reason=str(payload.get("request_reason") or "").strip()[:500],
         requested_category=payload.get("requested_category") or None,
         day=payload.get("day") or None,
         start_period=payload.get("start_period") if isinstance(payload.get("start_period"), int) else None,
@@ -1197,6 +1225,7 @@ def _submission_proposal(submission: dict) -> BookingProposal:
         requested_room=submission.get("room_id") or submission.get("requested_room"),
         mandatory_for_groups=list(submission.get("mandatory_for_groups") or []),
         raw_text=str(submission.get("raw_text") or ""),
+        request_reason=str(submission.get("request_reason") or ""),
         requested_category=submission.get("requested_category"),
         day=submission.get("day"),
         start_period=submission.get("start_period"),
@@ -1220,6 +1249,7 @@ def _official_request_from_submission(submission: dict) -> dict:
         "needs",
         "requested_room",
         "mandatory_for_groups",
+        "request_reason",
         "series_id",
         "raw_text",
     )
@@ -1339,6 +1369,7 @@ def assistant_parse(payload: dict, x_demo_user: str = Header(default="debjeet"))
         "draft": parsed.draft,
         "follow_up": parsed.follow_up,
         "missing": parsed.missing,
+        "fallback_reason": parsed.fallback_reason,
     }
 
 
@@ -1349,6 +1380,222 @@ def validate_booking_request(
     name, role = _actor(x_demo_user)
     proposal, result = _validate_proposal(payload, name, role)
     return {**result, "category": proposal.category(STATE["data"])}
+
+
+def _coerce_period(value: Any, label: str) -> int:
+    try:
+        period = int(value)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=f"{label} must be a period number") from error
+    if not 1 <= period <= 13:
+        raise HTTPException(status_code=422, detail=f"{label} must be within P1-P13")
+    return period
+
+
+@app.post("/api/availability")
+def availability(payload: dict, x_demo_user: str = Header(default="debjeet")) -> dict:
+    """Live occupancy for the selected dates/room: what is already here, and how hard."""
+    _actor(x_demo_user)
+    if STATE["data"] is None:
+        raise HTTPException(status_code=409, detail="no dataset loaded")
+    dates = [str(value)[:10] for value in payload.get("dates") or [] if isinstance(value, str)]
+    if not dates:
+        raise HTTPException(status_code=422, detail="at least one date is required")
+    from_period = _coerce_period(payload.get("from_period"), "from_period")
+    to_period = _coerce_period(payload.get("to_period"), "to_period")
+    if to_period < from_period:
+        from_period, to_period = to_period, from_period
+    room_id = payload.get("room_id") if isinstance(payload.get("room_id"), str) else None
+    attendance = payload.get("attendance")
+    attendance = int(attendance) if isinstance(attendance, int) else None
+    return build_availability(
+        STATE["data"],
+        STATE["placements"],
+        STATE["decisions"],
+        store.list_submissions(),
+        STATE["schedule"],
+        dates=dates,
+        from_period=from_period,
+        to_period=to_period,
+        room_id=room_id,
+        room_types=[str(value) for value in payload.get("room_types") or []],
+        attendance=attendance,
+        needs=[str(value) for value in payload.get("needs") or []],
+        mandatory_groups=[str(value) for value in payload.get("mandatory_for_groups") or []],
+    )
+
+
+def _check_session_scope(name: str, role: str, session_id: str) -> None:
+    data: Data | None = STATE["data"]
+    if data is None:
+        raise HTTPException(status_code=409, detail="no dataset loaded")
+    session = data.sessions.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    if role == "admin":
+        return
+    if role == "faculty":
+        member = _faculty_for_actor(name)
+        if member is None or member.get("id") != session["faculty_id"]:
+            raise HTTPException(status_code=403, detail="you can only request changes to your own sessions")
+        return
+    if role == "department_coordinator":
+        if not _coordinator_can_decide_session(name, session_id):
+            raise HTTPException(status_code=403, detail="this session is outside your department")
+        return
+    raise HTTPException(status_code=403, detail="this role cannot request session changes")
+
+
+@app.post("/api/session-availability")
+def session_availability(payload: dict, x_demo_user: str = Header(default="debjeet")) -> dict:
+    name, role = _actor(x_demo_user)
+    session_id = str(payload.get("session_id") or "")
+    _check_session_scope(name, role, session_id)
+    day = str(payload.get("day") or "").upper()
+    if day not in (STATE["data"].days if STATE["data"] else []):
+        raise HTTPException(status_code=422, detail="invalid day")
+    start = _coerce_period(payload.get("start_period"), "start_period")
+    room_id = str(payload.get("room_id") or "")
+    if room_id not in (STATE["data"].rooms if STATE["data"] else {}):
+        raise HTTPException(status_code=422, detail="unknown room")
+    return build_session_availability(
+        STATE["data"],
+        STATE["placements"],
+        session_id=session_id,
+        day=day,
+        start=start,
+        room_id=room_id,
+    )
+
+
+@app.post("/api/change-requests/preview")
+def preview_change_request(payload: dict, x_demo_user: str = Header(default="debjeet")) -> dict:
+    name, role = _actor(x_demo_user)
+    if role == "club":
+        raise HTTPException(status_code=403, detail="club representatives do not request session changes")
+    text = payload.get("text")
+    draft = payload.get("draft")
+    if not isinstance(draft, dict):
+        if not isinstance(text, str) or len(text.strip()) < 5:
+            raise HTTPException(status_code=422, detail="text is required")
+        parsed = parse_change_request(STATE["data"], text)
+        draft = parsed.draft
+        follow_up = parsed.follow_up
+        model = parsed.model
+    else:
+        follow_up = []
+        model = "manual-edit"
+    session_id = draft.get("session_id")
+    if session_id:
+        _check_session_scope(name, role, str(session_id))
+    result: dict[str, Any] = {
+        "ok": True,
+        "blocked": [],
+        "warnings": [],
+        "alternatives": [],
+        "draft": draft,
+        "follow_up": follow_up,
+        "model": model,
+    }
+    if (
+        draft.get("kind") == "move_session"
+        and session_id
+        and draft.get("day")
+        and isinstance(draft.get("start_period"), int)
+        and draft.get("room_id")
+    ):
+        result.update(
+            build_session_availability(
+                STATE["data"],
+                STATE["placements"],
+                session_id=str(session_id),
+                day=str(draft["day"]),
+                start=int(draft["start_period"]),
+                room_id=str(draft["room_id"]),
+            )
+        )
+    return result
+
+
+@app.get("/api/room-blocks")
+def list_room_blocks(x_demo_user: str = Header(default="debjeet")) -> dict:
+    _actor(x_demo_user)
+    return {"items": (STATE["raw"] or {}).get("room_unavailability", [])}
+
+
+@app.post("/api/room-blocks")
+def add_room_block(payload: dict, x_demo_user: str = Header(default="debjeet")) -> dict:
+    _require_admin(x_demo_user)
+    raw = STATE["raw"]
+    data: Data | None = STATE["data"]
+    if raw is None or data is None:
+        raise HTTPException(status_code=409, detail="no dataset loaded")
+    room_id = str(payload.get("room_id") or "")
+    day = str(payload.get("day") or "").upper()
+    periods = sorted(
+        {int(value) for value in payload.get("periods") or [] if str(value).isdigit()}
+    )
+    reason = str(payload.get("reason") or "Reserved / permanently allocated").strip()
+    if room_id not in data.rooms:
+        raise HTTPException(status_code=422, detail="unknown room")
+    if day not in data.days:
+        raise HTTPException(status_code=422, detail="invalid day")
+    if not periods or any(period < 1 or period > 13 for period in periods):
+        raise HTTPException(status_code=422, detail="periods must be within P1-P13")
+    conflicts: list[str] = []
+    for session_id, (placed_day, start, room) in (STATE["placements"] or {}).items():
+        if room != room_id or placed_day != day:
+            continue
+        session = data.sessions.get(session_id)
+        if session and set(periods) & set(data.block(start, session["duration"])):
+            conflicts.append(f"{session_id} ({session['course_id']})")
+    for decision in STATE["decisions"] or []:
+        if (
+            decision.get("room_id") == room_id
+            and decision.get("day") == day
+            and decision.get("status") in ("approved", "alternative_offered")
+            and isinstance(decision.get("start_period"), int)
+            and isinstance(decision.get("end_period"), int)
+        ):
+            if set(periods) & set(range(decision["start_period"], decision["end_period"] + 1)):
+                conflicts.append(str(decision.get("request_id")))
+    if conflicts:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "this block would conflict with existing placements",
+                "conflicts": conflicts[:20],
+            },
+        )
+    next_raw = copy.deepcopy(raw)
+    next_raw.setdefault("room_unavailability", []).append(
+        {"room_id": room_id, "day": day, "periods": periods, "reason": reason}
+    )
+    STATE.update(raw=next_raw, data=Data(next_raw))
+    if STATE["data_path"] is not None:
+        STATE["data_path"].write_text(json.dumps(next_raw, ensure_ascii=False), encoding="utf-8")
+    store.save_dataset(next_raw, STATE["source"])
+    store.save_state(STATE)
+    return {"ok": True, "items": next_raw["room_unavailability"]}
+
+
+@app.delete("/api/room-blocks/{index}")
+def delete_room_block(index: int, x_demo_user: str = Header(default="debjeet")) -> dict:
+    _require_admin(x_demo_user)
+    raw = STATE["raw"]
+    if raw is None:
+        raise HTTPException(status_code=409, detail="no dataset loaded")
+    blocks = raw.get("room_unavailability") or []
+    if index < 0 or index >= len(blocks):
+        raise HTTPException(status_code=404, detail="unknown room block")
+    next_raw = copy.deepcopy(raw)
+    next_raw["room_unavailability"].pop(index)
+    STATE.update(raw=next_raw, data=Data(next_raw))
+    if STATE["data_path"] is not None:
+        STATE["data_path"].write_text(json.dumps(next_raw, ensure_ascii=False), encoding="utf-8")
+    store.save_dataset(next_raw, STATE["source"])
+    store.save_state(STATE)
+    return {"ok": True, "items": next_raw["room_unavailability"]}
 
 
 @app.post("/api/bookings/submit")
@@ -1387,10 +1634,7 @@ def submit_booking_request(
 @app.get("/api/bookings")
 def list_booking_requests(x_demo_user: str = Header(default="debjeet")) -> dict:
     name, role = _actor(x_demo_user)
-    items = store.list_submissions()
-    if role in ("club", "faculty"):
-        items = [item for item in items if item.get("requester") == name]
-    return {"items": items}
+    return {"items": _scoped_submissions(role, name, store.list_submissions())}
 
 
 @app.post("/api/bookings/{request_id}/decide")
@@ -1571,44 +1815,73 @@ def create_change_request(payload: dict, x_demo_user: str = Header(default="debj
     if role not in ("faculty", "department_coordinator", "admin"):
         raise HTTPException(status_code=403, detail="Faculty, Coordinator or Admin only")
     text = payload.get("text")
-    if not isinstance(text, str) or len(text.strip()) < 5:
-        raise HTTPException(status_code=422, detail="text is required")
-    try:
-        parsed = parse_change_request(STATE["data"], text)
-    except AssistantUnavailable as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+    draft_override = payload.get("draft")
+    if isinstance(draft_override, dict):
+        draft = draft_override
+        follow_up: list[str] = []
+        model = "manual-edit"
+        stored_text = (text if isinstance(text, str) else "Structured change request").strip()[:4000]
+    else:
+        if not isinstance(text, str) or len(text.strip()) < 5:
+            raise HTTPException(status_code=422, detail="text is required")
+        try:
+            parsed = parse_change_request(STATE["data"], text)
+        except AssistantUnavailable as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        draft = parsed.draft
+        follow_up = parsed.follow_up
+        model = parsed.model
+        stored_text = text.strip()[:4000]
+    session_id = draft.get("session_id")
+    if session_id:
+        _check_session_scope(name, role, str(session_id))
+    blocked: list[dict] = []
+    warnings: list[str] = []
     alternatives: list[dict] = []
-    draft = parsed.draft
     if (
         draft.get("kind") == "move_session"
-        and draft.get("session_id")
-        and STATE["placements"]
-        and STATE["data"]
+        and session_id
+        and draft.get("day")
+        and isinstance(draft.get("start_period"), int)
+        and draft.get("room_id")
     ):
-        session_id = draft["session_id"]
-        day = draft.get("day")
-        start = draft.get("start_period")
-        current = STATE["placements"].get(session_id)
-        room_id = draft.get("room_id") or (current[2] if current else None)
-        issues = (
-            validate_manual(STATE["data"], STATE["placements"], session_id, day, start, room_id)
-            if day and isinstance(start, int) and room_id
-            else ["Missing target day, start period or room"]
+        check = build_session_availability(
+            STATE["data"],
+            STATE["placements"],
+            session_id=str(session_id),
+            day=str(draft["day"]),
+            start=int(draft["start_period"]),
+            room_id=str(draft["room_id"]),
         )
-        if issues:
-            alternatives = suggest_session_alternatives(
-                STATE["data"], STATE["placements"], session_id
+        blocked = check["blocked"]
+        warnings = check["warnings"]
+        alternatives = check["alternatives"]
+        if blocked:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "this move is blocked by hard constraints and cannot be submitted",
+                    "blocked": blocked,
+                    "alternatives": alternatives,
+                },
             )
+    request_reason = str(
+        payload.get("request_reason") or draft.get("request_reason") or ""
+    ).strip()[:500]
+    if request_reason:
+        draft = {**draft, "request_reason": request_reason}
     request_id = f"CHG-{int(datetime.now().timestamp() * 1000)}"
     record = {
         "id": request_id,
         "requester": name,
         "role": role,
-        "text": text.strip()[:4000],
-        "draft": parsed.draft,
-        "follow_up": parsed.follow_up,
+        "text": stored_text,
+        "request_reason": request_reason,
+        "draft": draft,
+        "follow_up": follow_up,
+        "warnings": warnings,
         "alternatives": alternatives,
-        "model": parsed.model,
+        "model": model,
         "status": "pending",
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "decided_by": None,
@@ -1622,10 +1895,7 @@ def create_change_request(payload: dict, x_demo_user: str = Header(default="debj
 @app.get("/api/change-requests")
 def list_change_requests(x_demo_user: str = Header(default="debjeet")) -> dict:
     name, role = _actor(x_demo_user)
-    items = store.list_change_requests()
-    if role in ("faculty", "club"):
-        items = [item for item in items if item.get("requester") == name]
-    return {"items": items}
+    return {"items": _scoped_changes(role, name, store.list_change_requests())}
 
 
 def _apply_change_request(record: dict) -> None:
@@ -1690,14 +1960,8 @@ def decide_change_request(
         raise HTTPException(status_code=404, detail="unknown change request")
     if record.get("status") != "pending":
         raise HTTPException(status_code=409, detail="request already decided")
-    if role not in ("admin", "department_coordinator"):
-        raise HTTPException(status_code=403, detail="Admin or owning department coordinator only")
-    session_id = (record.get("draft") or {}).get("session_id")
-    if role == "department_coordinator" and not _coordinator_can_decide_session(name, session_id):
-        raise HTTPException(
-            status_code=403,
-            detail="only the owning department coordinator may decide this session",
-        )
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="timetable changes are decided by Admin only")
     if str(record.get("requester", "")).lower() == name.lower():
         raise HTTPException(status_code=403, detail="self-approval is not allowed")
     decision = payload.get("decision")

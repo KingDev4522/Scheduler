@@ -26,6 +26,9 @@ class BookingProposal:
     requested_room: str | None = None
     mandatory_for_groups: list[str] = field(default_factory=list)
     raw_text: str = ""
+    # Why the requester needs this slot. Kept with the request for the approver
+    # and for the post-decision record; never used as a scheduling constraint.
+    request_reason: str = ""
     requested_category: str | None = None
     day: str | None = None
     start_period: int | None = None
@@ -56,6 +59,7 @@ class BookingProposal:
             "needs": self.needs,
             "requested_room": self.requested_room,
             "mandatory_for_groups": self.mandatory_for_groups,
+            "request_reason": self.request_reason,
             "series_id": None,
             "raw_text": self.raw_text or self.title,
         }

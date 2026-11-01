@@ -58,6 +58,8 @@ def test_parse_falls_back_to_local_rules(data: Data, monkeypatch) -> None:
         {"day": "FRI", "from_period": 3, "to_period": 4}
     ]
     assert parsed.follow_up[0].startswith("Gemini is temporarily unavailable")
+    assert "503" in (parsed.fallback_reason or "")
+
 
 
 def test_gemini_tries_next_model_on_503(monkeypatch) -> None:
@@ -227,6 +229,50 @@ def test_named_room_implies_room_type(data: Data) -> None:
 def test_local_instead_replaces_room_type(data: Data) -> None:
     raw = assistant._local_booking_draft(data, "seminar hall\nactually the auditorium instead")
     assert raw["room_types"] == ["auditorium"]
+
+
+def test_local_parser_reads_period_range_and_month_date(data: Data) -> None:
+    from datetime import date
+
+    text = "need a room for 30 people on 5th november for 3 periods from p3 to p5"
+    parsed = assistant._normalise_booking(
+        data,
+        assistant._local_booking_draft(data, text),
+        "local-rules",
+        text=text,
+        today=date(2026, 11, 1),
+    )
+    assert parsed.draft["attendance"] == 30
+    assert parsed.draft["duration_periods"] == 3
+    assert parsed.draft["dates"] == ["2026-11-05"]
+    assert parsed.draft["windows"] == [{"day": "THU", "from_period": 3, "to_period": 5}]
+    assert parsed.missing == []
+
+
+def test_complete_draft_drops_satisfied_follow_up(data: Data) -> None:
+    parsed = assistant._normalise_booking(
+        data,
+        {
+            "title": "Room booking",
+            "attendance": 30,
+            "duration_periods": 3,
+            "windows": [{"day": "THU", "from_period": 3, "to_period": 5}],
+            "room_types": ["classroom", "lecture_hall", "seminar_hall"],
+            "dates": ["2026-11-05"],
+            "follow_up": ["Please specify the room type or a specific room identifier"],
+        },
+        text="need a room for 30 people on 5th november for 3 periods from p3 to p5",
+    )
+    assert parsed.missing == []
+    assert parsed.follow_up == []
+
+
+def test_local_change_reads_single_period(data: Data) -> None:
+    raw = assistant._local_change_draft(data, "Move CS101-A-L1 to Tuesday P6 in LH-1")
+    assert raw["session_id"] == "CS101-A-L1"
+    assert raw["day"] == "TUE"
+    assert raw["start_period"] == 6
+    assert raw["room_id"] == "LH-1"
 
 
 def test_clock_range_is_not_mistaken_for_a_date() -> None:
