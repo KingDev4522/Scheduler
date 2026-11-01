@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -27,15 +28,33 @@ DISRUPTION = ROOT / "CrunchWeek_StarterPack" / "examples" / "sample_disruption.j
 ADMIN = {"x-demo-user": "debjeet"}
 
 
+def generate(client, seconds: int = 30) -> dict:
+    """Start the background solve and wait for it, the way the SPA does.
+
+    `/api/generate` returns 202 immediately because a real solve outlives the
+    hosting proxy's request timeout; the result is read from the status poll.
+    """
+    response = client.post(f"/api/generate?seconds={seconds}", headers=ADMIN)
+    assert response.status_code == 202, response.text
+    deadline = time.monotonic() + 240
+    while time.monotonic() < deadline:
+        job = client.get("/api/generate/status", headers=ADMIN).json()
+        if job["status"] == "complete":
+            assert job["result"] is not None, job
+            return job["result"]
+        if job["status"] == "error":
+            raise AssertionError(f"generation failed: {job['error']}")
+        time.sleep(0.25)
+    raise AssertionError("generation did not finish within 240s")
+
+
 class BackendApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         TEST_DB.unlink(missing_ok=True)
         cls.client = TestClient(app)
         cls.client.__enter__()
-        response = cls.client.post("/api/generate?seconds=30", headers=ADMIN)
-        assert response.status_code == 200, response.text
-        cls.generated = response.json()
+        cls.generated = generate(cls.client, seconds=30)
         cls.schedule = cls.client.get("/api/schedule", headers=ADMIN).json()
 
     @classmethod
@@ -260,8 +279,7 @@ class BackendApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(restored.status_code, 200)
-        regenerated = self.client.post("/api/generate?seconds=30", headers=ADMIN)
-        self.assertEqual(regenerated.status_code, 200)
+        self.assertEqual(generate(self.client, seconds=30)["sessions"], 189)
 
     def test_sqlite_persistence(self) -> None:
         raw, source = store.load_dataset()

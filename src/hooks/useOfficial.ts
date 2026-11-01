@@ -84,7 +84,21 @@ export function useOfficial(): OfficialState {
     setBusy(true)
     setError(null)
     try {
-      const result = await api.generate(actor)
+      // The solve runs on a backend worker thread, so the POST returns at once
+      // and we poll instead of holding a request open past the proxy timeout.
+      let job = await api.generate(actor)
+      const deadline = Date.now() + 6 * 60 * 1000
+      while (job.status === 'idle' || job.status === 'running') {
+        if (Date.now() > deadline) {
+          throw new Error('Generation is still running on the backend. Refresh in a moment to pick it up.')
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 2500))
+        job = await api.generateStatus(actor)
+      }
+      if (job.status !== 'complete' || !job.result) {
+        throw new Error(job.error || 'Generation failed.')
+      }
+      const result = job.result
       setGenerateResult(result)
       setDisruptionResult(null)
       await refresh()

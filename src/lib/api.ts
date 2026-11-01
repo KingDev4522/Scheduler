@@ -263,6 +263,20 @@ export interface GenerateResult {
   policy_version: string
 }
 
+/**
+ * Background solve state. `POST /api/generate` returns 202 with `running` and
+ * the client polls `/api/generate/status` until it settles.
+ */
+export interface GenerateJob {
+  status: 'idle' | 'running' | 'complete' | 'error'
+  started_at?: string | null
+  finished_at?: string | null
+  result?: GenerateResult | null
+  error?: string | null
+  generated?: boolean
+  generated_at?: string | null
+}
+
 export interface DisruptionResult {
   status: string
   moved: number
@@ -442,7 +456,8 @@ export const api = {
   dataset: (user = 'debjeet') => request<DatasetInfo>('/api/dataset', {}, user),
   schedule: (user = 'debjeet') => request<ScheduleResponse>('/api/schedule', {}, user),
   generate: (user = 'debjeet') =>
-    request<GenerateResult>('/api/generate', { method: 'POST' }, user),
+    request<GenerateJob>('/api/generate', { method: 'POST' }, user),
+  generateStatus: (user = 'debjeet') => request<GenerateJob>('/api/generate/status', {}, user),
   reset: (user = 'debjeet') => request<{ ok: boolean }>('/api/reset', { method: 'POST' }, user),
   approveProposal: (user = 'debjeet') =>
     request<{ ok: boolean; proposal_status: string }>(

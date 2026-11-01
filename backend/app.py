@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -158,6 +159,41 @@ STATE: dict[str, Any] = {
     "policy_version": None,
     "proposal_status": None,
 }
+
+# ── Background generation ───────────────────────────────────────────────
+# A full CP-SAT solve outlives the hosting proxy's request timeout: the CDN in
+# front of Render drops the connection around 60s and answers with a response
+# that carries no CORS headers, which the browser reports as
+# "blocked by CORS policy". So POST /api/generate only starts the work on a
+# worker thread and the client polls /api/generate/status until it lands.
+GENERATION_LOCK = threading.Lock()
+GENERATION: dict[str, Any] = {
+    "status": "idle",  # idle | running | complete | error
+    "started_at": None,
+    "finished_at": None,
+    "result": None,
+    "error": None,
+}
+
+
+def _reset_generation_job() -> None:
+    with GENERATION_LOCK:
+        GENERATION.update(
+            status="idle",
+            started_at=None,
+            finished_at=None,
+            result=None,
+            error=None,
+        )
+
+
+def _error_text(detail: Any) -> str:
+    if isinstance(detail, str):
+        return detail
+    try:
+        return json.dumps(detail)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return str(detail)
 
 
 # --------------------------------------------------------------------------
@@ -409,6 +445,7 @@ def _check_dataset(raw: Any) -> list[str]:
 
 
 def _load_raw(raw: dict, source: str, *, persist: bool = True) -> None:
+    _reset_generation_job()
     errors = _check_dataset(raw)
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors[:20]})
@@ -485,6 +522,7 @@ def _summary(report: dict) -> dict:
 
 
 def _invalidate_generation() -> None:
+    _reset_generation_job()
     STATE.update(
         schedule=None,
         placements=None,
@@ -896,11 +934,77 @@ async def import_dataset(
     return dataset()
 
 
-@app.post("/api/generate")
+def _run_generation(seconds: float) -> None:
+    """Run the solve off the request thread and record how it ended."""
+    try:
+        result = _generate(seconds)
+    except HTTPException as error:
+        with GENERATION_LOCK:
+            GENERATION.update(
+                status="error",
+                result=None,
+                error=_error_text(error.detail),
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+    except Exception as error:  # pragma: no cover - defensive
+        with GENERATION_LOCK:
+            GENERATION.update(
+                status="error",
+                result=None,
+                error=f"internal error: {error}",
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+    else:
+        with GENERATION_LOCK:
+            GENERATION.update(
+                status="complete",
+                result=result,
+                error=None,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+
+@app.post("/api/generate", status_code=202)
 def generate(x_demo_user: str = Header(default="debjeet"), seconds: float = 120.0) -> dict:
+    """Start a solve and return at once; poll /api/generate/status for the result."""
     _require_admin(x_demo_user)
     seconds = min(max(float(seconds), 5.0), 150.0)
-    return _generate(seconds)
+    with GENERATION_LOCK:
+        if GENERATION["status"] == "running":
+            return {
+                "status": "running",
+                "started_at": GENERATION["started_at"],
+                "generated": STATE["schedule"] is not None,
+            }
+        GENERATION.update(
+            status="running",
+            started_at=datetime.now(timezone.utc).isoformat(),
+            finished_at=None,
+            result=None,
+            error=None,
+        )
+        started_at = GENERATION["started_at"]
+    threading.Thread(
+        target=_run_generation,
+        args=(seconds,),
+        name="cit-generate",
+        daemon=True,
+    ).start()
+    return {
+        "status": "running",
+        "started_at": started_at,
+        "generated": STATE["schedule"] is not None,
+    }
+
+
+@app.get("/api/generate/status")
+def generate_status(x_demo_user: str = Header(default="debjeet")) -> dict:
+    _actor(x_demo_user)
+    with GENERATION_LOCK:
+        snapshot = dict(GENERATION)
+    snapshot["generated"] = STATE["schedule"] is not None
+    snapshot["generated_at"] = STATE["generated_at"]
+    return snapshot
 
 
 @app.get("/api/schedule")
