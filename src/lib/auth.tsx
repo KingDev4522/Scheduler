@@ -75,7 +75,9 @@ function restoreSession(): SessionUser | null {
   const session = readJSON<Session | null>(KEYS.session, null)
   if (!session?.token || !session.user?.username) return null
   if (localStorage.getItem(KEYS.token) !== session.token) {
-    writeJSON(KEYS.token, session.token)
+    // Plain setItem: writeJSON would store the token JSON-quoted, so every
+    // request would send a malformed `Bearer "…"` value and earn a 401.
+    localStorage.setItem(KEYS.token, session.token)
   }
   return session.user
 }

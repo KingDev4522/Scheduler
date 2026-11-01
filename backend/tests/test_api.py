@@ -281,6 +281,13 @@ class BackendApiTests(unittest.TestCase):
         self.assertEqual(restored.status_code, 200)
         self.assertEqual(generate(self.client, seconds=30)["sessions"], 189)
 
+    def test_session_secret_is_stable_across_restarts(self) -> None:
+        # Without a pinned SESSION_SECRET, every boot used to mint a new secret
+        # and invalidate all issued tokens.
+        first = store.load_or_create_secret()
+        self.assertEqual(first, store.load_or_create_secret())
+        self.assertGreaterEqual(len(first), 32)
+
     def test_sqlite_persistence(self) -> None:
         raw, source = store.load_dataset()
         self.assertIsNotNone(raw)

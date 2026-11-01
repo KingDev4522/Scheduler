@@ -434,6 +434,10 @@ async function request<T>(path: string, init: RequestInit = {}, user = 'debjeet'
     } catch {
       /* keep status text */
     }
+    // The middleware's bare 401 is a dead session, not something the user did.
+    if (response.status === 401 && detail === 'authentication required') {
+      detail = 'Your session expired. Sign in again.'
+    }
     throw new Error(detail)
   }
   return response.json() as Promise<T>

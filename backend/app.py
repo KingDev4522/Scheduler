@@ -16,7 +16,6 @@ import hashlib
 import hmac
 import json
 import os
-import secrets
 import shutil
 import subprocess
 import sys
@@ -87,7 +86,9 @@ DEMO_PROFILES = {
     "ananya": {"displayName": "Dr. Ananya Mishra", "department": "CSE"},
 }
 DEMO_PASSWORD = os.getenv("DEMO_PASSWORD", "1234")
-SESSION_SECRET = os.getenv("SESSION_SECRET") or secrets.token_hex(32)
+# An explicit env var wins; otherwise reuse the secret persisted in the database
+# so a restart or redeploy does not invalidate every issued session token.
+SESSION_SECRET = os.getenv("SESSION_SECRET") or store.load_or_create_secret()
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "28800"))
 # Keep demo-header access opt-in. Judges use the documented demo logins; a
 # public deployment must not accept an unsigned identity header.

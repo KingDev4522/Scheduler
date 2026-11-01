@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -19,6 +20,11 @@ DEFAULT_DB = Path(__file__).resolve().parent / "state.sqlite3"
 DB_PATH = Path(os.getenv("DATABASE_PATH", str(DEFAULT_DB)))
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS app_secret (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS dataset (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     raw TEXT NOT NULL,
@@ -99,6 +105,27 @@ def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _db() as conn:
         conn.executescript(SCHEMA)
+
+
+def load_or_create_secret() -> str:
+    """Return a stable signing secret, generated once and kept in the database.
+
+    A deployment with no SESSION_SECRET env var otherwise mints a random secret
+    on every boot, so each restart or redeploy silently invalidates every issued
+    token and the SPA starts getting 401s until it signs in again.
+    """
+    init_db()  # idempotent: safe to call from module import
+    with _db() as conn:
+        row = conn.execute("SELECT value FROM app_secret WHERE id = 1").fetchone()
+        if row is not None:
+            return str(row["value"])
+        value = secrets.token_hex(32)
+        conn.execute(
+            "INSERT INTO app_secret (id, value) VALUES (1, ?) ON CONFLICT(id) DO NOTHING",
+            (value,),
+        )
+        row = conn.execute("SELECT value FROM app_secret WHERE id = 1").fetchone()
+    return str(row["value"])
 
 
 def save_dataset(raw: dict[str, Any], source: str) -> None:
