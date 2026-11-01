@@ -131,15 +131,10 @@ def _cors_origins() -> list[str]:
 # pattern while the explicit list above pins the production origin.
 CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX") or r"https://[a-z0-9-]+\.vercel\.app"
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins(),
-    allow_origin_regex=CORS_ORIGIN_REGEX,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    max_age=600,
-)
+# CORS is registered AFTER the authenticate middleware below so that it wraps
+# authenticate (outermost). Otherwise authenticate's 401 short-circuits happen
+# before CORS runs and the browser reports them as CORS failures with no
+# Access-Control-Allow-Origin header.
 
 STATE: dict[str, Any] = {
     "raw": None,
@@ -245,6 +240,21 @@ async def authenticate(request, call_next):
                     content={"detail": "authentication required"},
                 )
     return await call_next(request)
+
+
+# Register CORS now (after `authenticate` above) so it becomes the OUTERMOST
+# middleware and wraps authenticate. Its responses — including authenticate's 401
+# short-circuits — therefore carry Access-Control-Allow-Origin, which the
+# browser needs to read the error instead of reporting a CORS failure.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins(),
+    allow_origin_regex=CORS_ORIGIN_REGEX,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=600,
+)
 
 
 @app.post("/api/auth/login")

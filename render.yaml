@@ -3,6 +3,9 @@ services:
     name: cit-scheduler
     runtime: docker
     dockerfilePath: ./Dockerfile
+    # Free tier (512 MB / 0.1 CPU) is too small for the CP-SAT solve and
+    # Render kills the request -> 502. Standard gives enough headroom.
+    plan: standard
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_PATH
