@@ -13,7 +13,6 @@ import Manifesto from './landing/components/Manifesto.jsx'
 import Gateway from './landing/components/Gateway.jsx'
 import Footer from './landing/components/Footer.jsx'
 import Grain from './landing/components/Grain.jsx'
-import Preloader from './landing/components/Preloader.jsx'
 import './landing/landing.css'
 
 gsap.registerPlugin(ScrollTrigger)
@@ -21,10 +20,12 @@ gsap.registerPlugin(ScrollTrigger)
 // Marketing landing page for CIT Scheduler, the campus scheduling platform
 // built for Chilika Institute of Technology (CIT). Sections, order and motion
 // follow the original editorial layout.
+//
+// The page paints straight away: there is no boot screen and no scroll lock,
+// so the first frame is the hero, not a loading state.
 export default function App() {
   const { pathname } = useLocation()
   const [ready, setReady] = useState(false)
-  const [introDone, setIntroDone] = useState(false)
   const lenisRef = useRef(null)
 
   const sectionId = sectionIdForPath(pathname)
@@ -64,8 +65,6 @@ export default function App() {
     gsap.ticker.add(raf)
     gsap.ticker.lagSmoothing(0)
     document.documentElement.classList.add('landing-scroll')
-    lenis.stop()
-    document.body.style.overflow = 'hidden'
     window.scrollTo(0, 0)
     setReady(true)
 
@@ -73,25 +72,17 @@ export default function App() {
       gsap.ticker.remove(raf)
       lenis.destroy()
       lenisRef.current = null
-      document.body.style.overflow = ''
       document.documentElement.classList.remove('landing-scroll')
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill())
     }
   }, [])
 
-  const handleIntroDone = useCallback(() => {
-    setIntroDone(true)
-    lenisRef.current?.start()
-    document.body.style.overflow = ''
-    ScrollTrigger.refresh()
-  }, [])
+  useEffect(() => {
+    if (ready) ScrollTrigger.refresh()
+  }, [ready])
 
   useEffect(() => {
-    if (ready && introDone) ScrollTrigger.refresh()
-  }, [ready, introDone])
-
-  useEffect(() => {
-    if (!ready || !introDone || !sectionId) return undefined
+    if (!ready || !sectionId) return undefined
     const selector = `#${sectionId}`
     let attempts = 0
     const timer = window.setInterval(() => {
@@ -104,7 +95,7 @@ export default function App() {
       }
     }, 150)
     return () => window.clearInterval(timer)
-  }, [ready, introDone, sectionId, scrollTo])
+  }, [ready, sectionId, scrollTo])
 
   useEffect(() => {
     const refresh = () => ScrollTrigger.refresh()
@@ -119,11 +110,10 @@ export default function App() {
   }, [])
 
   return (
-    <div className="landing-root relative bg-[#070709] text-neutral-100 min-h-[100dvh] w-full self-stretch">
-      {!introDone && <Preloader onDone={handleIntroDone} />}
+    <div className="landing-root relative min-h-[100dvh] w-full self-stretch bg-[#070709] text-neutral-100">
       <Grain />
       <Nav />
-      <Hero start={introDone} />
+      <Hero start={ready} />
       <Showcase />
       <Privacy />
       <FlowBeats />

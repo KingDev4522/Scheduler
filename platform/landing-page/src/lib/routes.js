@@ -19,24 +19,14 @@ export function normalizePath(pathname) {
   return trimmed === "" ? "/" : trimmed;
 }
 
-/* Signed-in scheduler pages, in nav order. */
-export const STUDIO_ROUTES = [
-  { path: "/timetables", label: "Timetables" },
-  { path: "/exams", label: "Exams" },
-  { path: "/bookings", label: "Bookings" },
-  { path: "/approvals", label: "Approvals" },
-];
-
-const STUDIO_PATHS = STUDIO_ROUTES.map((route) => route.path);
-
-export function isStudioPath(pathname) {
-  return STUDIO_PATHS.includes(normalizePath(pathname));
-}
-
 /*
  * Landing page sections promoted to real routes. Each entry is a URL you can
  * share, bookmark and refresh; `id` is the in-page anchor the landing page
  * scrolls to once the section is mounted.
+ *
+ * The landing page carries no links into the scheduler. Every in-app page
+ * (timetables, exams, bookings, approvals) lives behind the login, so the
+ * marketing page only points at its own sections.
  */
 export const LANDING_SECTIONS = [
   { path: "/how", label: "How it works", id: "how" },

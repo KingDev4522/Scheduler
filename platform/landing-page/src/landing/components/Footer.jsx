@@ -1,6 +1,6 @@
-import { Link, NavLink } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import BatSwarm from './BatSwarm.jsx'
-import { LANDING_SECTIONS, STUDIO_ROUTES } from '../../lib/routes'
+import { LANDING_SECTIONS } from '../../lib/routes'
 
 /*
  * FOOTER - top row holds the brand mark plus link columns; below it a big
@@ -46,23 +46,8 @@ export default function Footer() {
             </Link>
           </div>
 
-          {/* Link columns */}
-          <div className="grid grid-cols-2 gap-10 sm:gap-16">
-            <nav aria-label="Scheduler">
-              <p className="font-mono-tech text-[10.5px] uppercase tracking-[0.24em] text-neutral-600">Scheduler</p>
-              <ul className="mt-5 space-y-3.5">
-                {STUDIO_ROUTES.map((l) => (
-                  <li key={l.path}>
-                    <NavLink
-                      to={l.path}
-                      className="text-[14px] font-medium text-neutral-400 transition-colors duration-300 hover:text-neutral-50"
-                    >
-                      {l.label}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            </nav>
+          {/* Link columns — the landing page only points at its own sections */}
+          <div className="grid grid-cols-1 gap-10 sm:gap-16">
             <nav aria-label="Explore">
               <p className="font-mono-tech text-[10.5px] uppercase tracking-[0.24em] text-neutral-600">Explore</p>
               <ul className="mt-5 space-y-3.5">
