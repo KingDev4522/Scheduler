@@ -1,87 +1,82 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CalendarCheck2, Filter, Lock, ShieldAlert } from 'lucide-react'
-import { PageHeader } from '../components/PageHeader'
-import { EmptyState, ErrorState, StatusNotice } from '../components/States'
-import { PageSkeleton } from '../components/Skeletons'
-import { BookingStatusBadge, PriorityBadge } from '../components/Badges'
-import { DecisionDialog } from '../components/DecisionDialog'
+import { CalendarCheck2, Search, X } from 'lucide-react'
 import { useAuth } from '../lib/auth'
 import { useOfficial } from '../hooks/useOfficial'
-import { buildOfficialView } from '../lib/official'
 import { api, type BookingSubmission, type ChangeRequestRecord } from '../lib/api'
-import { bookingExplanation } from '../lib/explanations'
-import {
-  type AppData,
-  type Booking,
-  type BookingPriority,
-  type BookingStatus,
-} from '../lib/store'
-import { DAYS, periodRangeLabel, timeRangeLabel, type Day } from '../lib/time'
-import {
-  bookingDecisionPermission,
-  bookingLocation,
-  derivedConflicts,
-} from '../lib/selectors'
+import { buildBookingBoard, categoryLabel, TIER_LABEL } from '../lib/bookingBoard'
+import { DAYS, type Day } from '../lib/time'
+import { findNav, navLabel } from '../lib/nav'
+import type { BookingStatus } from '../lib/store'
+import { EmptyState, ErrorState } from '../components/States'
+import { PageSkeleton } from '../components/Skeletons'
+import { BookingStatusCards, statusCardsFromCounts, type StatusFilter } from '../components/BookingStatusCards'
+import { FestWeekBoard } from '../components/FestWeekBoard'
+import { RequestLedger } from '../components/RequestLedger'
+import { StatusPill } from '../components/BookingStatus'
+import { cn } from '../lib/utils'
 
-const EMPTY_DATA: AppData = {
-  version: 0,
-  rooms: [],
-  faculty: [],
-  groups: [],
-  sessions: [],
-  bookings: [],
-  proposals: [],
-  audit: [],
+const TIER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'Every tier' },
+  { value: '1', label: TIER_LABEL[1] },
+  { value: '2', label: TIER_LABEL[2] },
+  { value: '3', label: TIER_LABEL[3] },
+]
+
+const KNOWN_STATUSES: BookingStatus[] = [
+  'pending',
+  'approved',
+  'alternative_offered',
+  'rejected',
+  'cancelled',
+]
+
+function asStatus(value: string): BookingStatus {
+  return KNOWN_STATUSES.includes(value as BookingStatus) ? (value as BookingStatus) : 'pending'
 }
 
-type StatusFilter = BookingStatus | 'all'
-type PriorityFilter = BookingPriority | 'all'
-type DayFilter = Day | 'all'
+function controlClass(extra?: string) {
+  return cn(
+    'h-8 rounded-lg border border-slate-300 bg-white px-2.5 text-[13px] text-slate-800 transition-colors',
+    'hover:border-slate-400 focus-visible:border-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2',
+    'dark:focus-visible:ring-slate-300 dark:focus-visible:ring-offset-slate-950',
+    extra,
+  )
+}
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'alternative_offered', label: 'Alternative offered' },
-  { value: 'cancelled', label: 'Cancelled' },
-]
-
-const PRIORITY_OPTIONS: { value: PriorityFilter; label: string }[] = [
-  { value: 'all', label: 'All tiers' },
-  { value: 1, label: 'Tier 1 · institute' },
-  { value: 2, label: 'Tier 2 · department' },
-  { value: 3, label: 'Tier 3 · club' },
-]
-
-const DAY_OPTIONS: { value: DayFilter; label: string }[] = [
-  { value: 'all', label: 'All days' },
-  ...DAYS.map((day) => ({ value: day as DayFilter, label: day })),
-]
+/** One short sentence naming what the solver did with the board. */
+function findingLine(counts: Record<'all' | BookingStatus, number>) {
+  const parts: string[] = []
+  if (counts.approved) {
+    parts.push(`${counts.all === counts.approved ? 'All' : counts.approved} of ${counts.all} placed inside the window they asked for`)
+  }
+  if (counts.alternative_offered) parts.push(`${counts.alternative_offered} offered a slot outside it`)
+  if (counts.pending) parts.push(`${counts.pending} still waiting on a decision`)
+  if (counts.rejected) parts.push(`${counts.rejected} refused`)
+  if (counts.cancelled) parts.push(`${counts.cancelled} withdrawn`)
+  return parts.join(' · ')
+}
 
 export default function Bookings() {
   const { user } = useAuth()
   const official = useOfficial()
-  const officialView = useMemo(
-    () =>
-      official.dataset && official.schedule
-        ? buildOfficialView(official.dataset, official.schedule)
-        : null,
-    [official.dataset, official.schedule],
-  )
-  const data = officialView?.data ?? EMPTY_DATA
-  const usingOfficial = officialView !== null
   const [params, setParams] = useSearchParams()
+
   const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all')
-  const [dayFilter, setDayFilter] = useState<DayFilter>('all')
-  const [mineOnly, setMineOnly] = useState(false)
-  const [target, setTarget] = useState<Booking | null>(null)
-  const [flash, setFlash] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [status, setStatus] = useState<StatusFilter>('all')
+  const [tier, setTier] = useState('all')
+  const [day, setDay] = useState<'all' | Day>('all')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [myBookings, setMyBookings] = useState<BookingSubmission[]>([])
   const [myChanges, setMyChanges] = useState<ChangeRequestRecord[]>([])
+
+  const roomFilter = params.get('room') ?? 'all'
+  const setRoomFilter = (value: string) => {
+    const next = new URLSearchParams(params)
+    if (value === 'all') next.delete('room')
+    else next.set('room', value)
+    setParams(next, { replace: true })
+  }
 
   const loadMine = useCallback(async () => {
     if (!user) return
@@ -93,7 +88,7 @@ export default function Bookings() {
       setMyBookings(bookings.items)
       setMyChanges(changes.items)
     } catch {
-      /* the board still works without the personal list */
+      // The solver board still works when the personal lists cannot be read.
     }
   }, [user])
 
@@ -101,645 +96,392 @@ export default function Bookings() {
     void loadMine()
   }, [loadMine])
 
-  const roomFilter = params.get('room') ?? 'all'
+  const board = useMemo(() => {
+    if (!official.dataset || !official.schedule) return null
+    return buildBookingBoard(official.dataset, official.schedule)
+  }, [official.dataset, official.schedule])
 
-  const setRoomFilter = (value: string) => {
-    const next = new URLSearchParams(params)
-    if (value === 'all') next.delete('room')
-    else next.set('room', value)
-    setParams(next, { replace: true })
-  }
+  const isApprover =
+    user?.role === 'admin' || user?.role === 'department_coordinator'
 
-  const conflictsByBooking = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const conflict of derivedConflicts(data)) {
-      for (const bookingId of conflict.bookingIds ?? []) {
-        const list = map.get(bookingId) ?? []
-        list.push(`${conflict.code}: ${conflict.title}`)
-        map.set(bookingId, list)
-      }
+  const adhoc = useMemo(() => {
+    if (!user) return []
+    const items: {
+      id: string
+      label: string
+      detail: string
+      status: string
+      mine: boolean
+      reason?: string
+    }[] = []
+    for (const item of myBookings) {
+      if (item.requester !== user.username && !isApprover) continue
+      items.push({
+        id: item.id,
+        label: item.title ?? item.id,
+        detail: [item.room_id ?? item.requested_room ?? 'no venue', item.day ?? '']
+          .filter(Boolean)
+          .join(' · '),
+        status: String(item.status),
+        mine: item.requester === user.username,
+        reason: (item.reason as string | null) ?? undefined,
+      })
     }
-    return map
-  }, [data])
+    for (const item of myChanges) {
+      if (item.requester !== user.username && !isApprover) continue
+      items.push({
+        id: item.id,
+        label: item.text,
+        detail: 'session change',
+        status: item.status,
+        mine: item.requester === user.username,
+        reason: item.reason ?? undefined,
+      })
+    }
+    return items.sort((a, b) => Number(b.mine) - Number(a.mine))
+  }, [myBookings, myChanges, user, isApprover])
+
+  const manualNav = findNav('/manual')
+  const manualLabel = user && manualNav ? navLabel(manualNav, user.role) : 'Request a venue'
+
+  const selectRow = useCallback((id: string) => {
+    setSelectedId((prev) => (prev === id ? null : id))
+  }, [])
+
+  // Bring the chosen request into view: the week board and the ledger share one selection.
+  useEffect(() => {
+    if (!selectedId) return
+    const desktop =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(min-width: 1024px)').matches
+    const target =
+      document.getElementById(`${desktop ? 'ledger' : 'ledger-m'}-${selectedId}`) ??
+      document.getElementById(`ledger-${selectedId}`)
+    if (!target) return
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
+  }, [selectedId])
+
+  const filtered = useMemo(() => {
+    if (!board) return []
+    const needle = query.trim().toLowerCase()
+    return board.rows.filter((row) => {
+      if (roomFilter !== 'all' && row.granted?.roomId !== roomFilter && row.requestedRoom !== roomFilter) {
+        return false
+      }
+      if (tier !== 'all' && String(row.tier) !== tier) return false
+      if (day !== 'all' && row.granted?.day !== day && row.windows[0]?.day !== day) return false
+      if (
+        needle &&
+        !`${row.id} ${row.title} ${row.requester} ${row.roomName ?? ''} ${row.categoryLabel}`
+          .toLowerCase()
+          .includes(needle)
+      ) {
+        return false
+      }
+      return true
+    })
+  }, [board, query, roomFilter, tier, day])
+
+  const scopedCounts = useMemo(() => {
+    const counts = {
+      all: filtered.length,
+      pending: 0,
+      approved: 0,
+      alternative_offered: 0,
+      rejected: 0,
+      cancelled: 0,
+    }
+    for (const row of filtered) counts[row.status] = (counts[row.status] ?? 0) + 1
+    return counts
+  }, [filtered])
+
+  const visible = useMemo(
+    () => (status === 'all' ? filtered : filtered.filter((row) => row.status === status)),
+    [filtered, status],
+  )
+
+  const hasFilters =
+    query.trim() !== '' || status !== 'all' || tier !== 'all' || day !== 'all' || roomFilter !== 'all'
+
+  const clearFilters = useCallback(() => {
+    setQuery('')
+    setStatus('all')
+    setTier('all')
+    setDay('all')
+    setSelectedId(null)
+    const next = new URLSearchParams(params)
+    next.delete('room')
+    setParams(next, { replace: true })
+  }, [params, setParams])
 
   if (!user) return null
 
   if (official.loading && !official.dataset && !official.error) {
-    return (
-      <PageSkeleton
-        label="Loading the bookings board…"
-        variant="table"
-        cards={4}
-        rows={8}
-      />
-    )
+    return <PageSkeleton label="Loading the venue board…" variant="table" cards={4} rows={8} />
   }
 
   if (official.error && !official.health) {
     return (
       <div>
-        <PageHeader title="Bookings" subtitle="Official Spectra board" />
-        <ErrorState
-          title="Backend not reachable"
-          description={official.error}
-          onRetry={() => void official.refresh()}
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Venue requests</h2>
+        <div className="mt-4">
+          <ErrorState
+            title="Backend not reachable"
+            description={official.error}
+            onRetry={() => void official.refresh()}
+          />
+        </div>
       </div>
     )
   }
 
-  if (!officialView) {
+  if (!board) {
     return (
       <div>
-        <PageHeader title="Bookings" subtitle="Official Spectra board" />
-        <EmptyState
-          icon={CalendarCheck2}
-          title="No official bookings board yet"
-          description="Generate the official timetable and Spectra decisions from Import / Exports."
-          action={
-            <a
-              href="/admin"
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Open Import / Exports
-            </a>
-          }
-        />
+        <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">Venue requests</h2>
+        <div className="mt-4">
+          <EmptyState
+            icon={CalendarCheck2}
+            title="No official bookings board yet"
+            description="This board is built from the official dataset and the solver's decisions. Generate the schedule to fill it."
+            action={
+              <Link
+                to="/admin"
+                className="inline-flex h-8 items-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800"
+              >
+                Open Import / Exports
+              </Link>
+            }
+          />
+        </div>
       </div>
     )
   }
 
-  const scoped = data.bookings
-  const needle = query.trim().toLowerCase()
-
-  const filtered = scoped.filter((booking) => {
-    if (roomFilter !== 'all' && booking.roomId !== roomFilter) return false
-    if (statusFilter !== 'all' && booking.status !== statusFilter) return false
-    if (priorityFilter !== 'all' && booking.priority !== priorityFilter) return false
-    if (dayFilter !== 'all' && booking.day !== dayFilter) return false
-    if (mineOnly && booking.requester !== user.username) return false
-    if (
-      needle &&
-      !`${booking.id} ${booking.title} ${booking.organizer} ${booking.requester} ${booking.roomId}`
-        .toLowerCase()
-        .includes(needle)
-    ) {
-      return false
-    }
-    return true
-  })
-
-  const summary = {
-    total: scoped.length,
-    pending: scoped.filter((booking) => booking.status === 'pending').length,
-    approved: scoped.filter((booking) => booking.status === 'approved').length,
-    rejected: scoped.filter((booking) => booking.status === 'rejected').length,
-    alternative: scoped.filter((booking) => booking.status === 'alternative_offered').length,
-    cancelled: scoped.filter((booking) => booking.status === 'cancelled').length,
-  }
-
-  const hasFilters =
-    roomFilter !== 'all' ||
-    query.trim() !== '' ||
-    statusFilter !== 'all' ||
-    priorityFilter !== 'all' ||
-    dayFilter !== 'all' ||
-    mineOnly
-
-  const clearFilters = () => {
-    setQuery('')
-    setStatusFilter('all')
-    setPriorityFilter('all')
-    setDayFilter('all')
-    setMineOnly(false)
-    setRoomFilter('all')
-  }
-
-  const submitDecision = () => {
-    setTarget(null)
-    setFlash({
-      tone: 'error',
-      message:
-        'Official Spectra decisions are generated by the solver. Use Manual Booking for ad-hoc decisions.',
-    })
-  }
-
-  const roomName = (roomId: string) => data.rooms.find((room) => room.id === roomId)?.name ?? roomId
-  const mineBookings = myBookings.filter((item) => item.requester === user.username)
-  const mineChanges = myChanges.filter((item) => item.requester === user.username)
-  const isAdminOrCoordinator =
-    user.role === 'admin' || user.role === 'department_coordinator'
-  const otherBookings = myBookings
-    .filter((item) => item.requester !== user.username)
-    .sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1))
-  const pendingOther = otherBookings.filter((item) => item.status === 'pending').length
-  const slotOf = (item: BookingSubmission) => {
-    const week = item.weeks?.[0]
-    const date = item.dates?.[0]
-    const prefix = week ? `W${week} · ` : ''
-    return `${prefix}${date ? `${date} · ` : ''}${item.day ?? '—'} P${item.start_period ?? '—'}–P${
-      item.end_period ?? '—'
-    } · ${item.room_id ?? item.requested_room ?? 'no room'}`
-  }
+  const weekRows = visible.filter((row) => row.granted !== null)
+  const cards = statusCardsFromCounts(scopedCounts)
+  const pendingInScope = adhoc.filter((item) => item.status === 'pending' && !item.mine).length
 
   return (
     <div className="cit-page">
-      <PageHeader
-        title="Bookings"
-        subtitle={
-          usingOfficial
-            ? 'Official Spectra board from the generated schedule: 25 requests with priority, status and a grounded reason.'
-            : 'The Spectra decision board — all 25 venue requests with priority, status and a grounded reason. Decisions are persisted locally and audited.'
-        }
-      />
-
-      {flash && <StatusNotice tone={flash.tone}>{flash.message}</StatusNotice>}
-
-      {(mineBookings.length > 0 || mineChanges.length > 0) && (
-        <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-900">My requests</h3>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Only your own submissions appear here, with the decision reason and approver.
+      {/* Title row */}
+      <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900">
+            Venue requests
+          </h2>
+          <p className="mt-1 max-w-[52ch] text-[14px] leading-relaxed text-slate-600">
+            {findingLine(scopedCounts)}
+            {board.festWeek ? ` · ${board.festWeek}` : ''}
           </p>
-          <ul className="mt-2 divide-y divide-slate-100">
-            {mineBookings.map((item) => (
-              <li key={item.id} className="py-2 text-xs">
-                <p className="font-medium text-slate-800">
-                  {item.title ?? item.id} · <span className="capitalize text-slate-500">{item.status}</span>
-                </p>
-                <p className="text-slate-500">
-                  {item.id}
-                  {item.request_reason ? ` · request reason: ${item.request_reason}` : ''}
-                  {item.reason ? ` · decision: ${item.reason}` : ''}
-                  {item.decided_by ? ` · by ${item.decided_by}` : ''}
-                </p>
-              </li>
-            ))}
-            {mineChanges.map((item) => (
-              <li key={item.id} className="py-2 text-xs">
-                <p className="font-medium text-slate-800">
-                  {item.text} · <span className="capitalize text-slate-500">{item.status}</span>
-                </p>
-                <p className="text-slate-500">
-                  {item.id}
-                  {item.request_reason ||
-                  ((item.draft as Record<string, unknown>)?.request_reason as string | undefined)
-                    ? ` · request reason: ${
-                        item.request_reason ??
-                        ((item.draft as Record<string, unknown>)?.request_reason as string)
-                      }`
-                    : ''}
-                  {item.reason ? ` · decision: ${item.reason}` : ''}
-                  {item.decided_by ? ` · by ${item.decided_by}` : ''}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to="/official"
+            className="hidden h-8 items-center rounded-lg px-2.5 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:inline-flex"
+          >
+            Official report
+          </Link>
+          <Link
+            to={isApprover ? '/approvals' : '/manual'}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white transition-colors hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-300 dark:focus-visible:ring-offset-slate-950"
+          >
+            {isApprover ? 'Open approvals' : manualLabel}
+            {isApprover && pendingInScope > 0 ? (
+              <span className="rounded-full bg-white/20 px-1.5 text-[12px] tabular-nums">
+                {pendingInScope}
+              </span>
+            ) : null}
+          </Link>
+        </div>
+      </header>
 
-      {isAdminOrCoordinator && otherBookings.length > 0 && (
-        <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">
-                Submitted booking requests
-                {pendingOther > 0 ? ` · ${pendingOther} pending` : ''}
-              </h3>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Ad-hoc requests from the manual form or assistant that are in your scope. They are
-                decided in the Approvals inbox.
-              </p>
-            </div>
-            <Link
-              to="/approvals"
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700"
-            >
-              Open approvals →
-            </Link>
+      {/* Ad-hoc queue: the requests that live outside the solver board */}
+      {adhoc.length > 0 ? (
+        <section className="mt-5 rounded-xl border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-slate-100 px-4 py-3">
+            <h3 className="text-[15px] font-semibold text-slate-900">Requests outside the board</h3>
+            <p className="text-[12px] text-slate-500">
+              {adhoc.filter((item) => item.mine).length} of yours ·{' '}
+              {adhoc.filter((item) => !item.mine).length} from others
+            </p>
           </div>
-          <ul className="mt-2 divide-y divide-slate-100">
-            {otherBookings.map((item) => (
-              <li key={item.id} className="py-2 text-xs">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="font-medium text-slate-800">
-                    {item.title ?? item.id} ·{' '}
-                    <span className="capitalize text-slate-500">{item.status}</span>
+          <ul className="cit-stagger divide-y divide-slate-100">
+            {adhoc.map((item) => (
+              <li key={`${item.id}-${item.status}`} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-4 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-medium text-slate-800">{item.label}</p>
+                  <p className="truncate text-[12px] text-slate-500">
+                    <span className="tabular-nums">{item.id}</span> · {item.detail}
+                    {item.reason ? ` · ${item.reason}` : ''}
                   </p>
-                  <p className="text-[11px] text-slate-400">{item.id}</p>
                 </div>
-                <p className="text-slate-500">
-                  {item.requester} · {slotOf(item)}
-                </p>
-                {item.request_reason && (
-                  <p className="text-slate-600">
-                    <span className="font-semibold">Request reason:</span> {item.request_reason}
-                  </p>
-                )}
-                {item.reason && (
-                  <p className="text-slate-500">
-                    <span className="font-semibold">Decision:</span> {item.reason}
-                  </p>
-                )}
+                <StatusPill status={asStatus(item.status)} className="shrink-0" />
               </li>
             ))}
           </ul>
+          {isApprover ? (
+            <div className="border-t border-slate-100 px-4 py-2">
+              <Link
+                to="/approvals"
+                className="text-[12px] font-medium text-slate-700 transition-colors hover:text-slate-900"
+              >
+                Decide these in the approvals inbox
+              </Link>
+            </div>
+          ) : null}
         </section>
-      )}
+      ) : null}
 
-      <p className="mb-4 text-xs text-slate-500">
-        {summary.total} requests visible to you ·{' '}
-        <span className="font-medium text-neutral-700">{summary.pending} pending</span> ·{' '}
-        <span className="font-medium text-neutral-600">{summary.approved} approved</span> ·{' '}
-        <span className="font-medium text-neutral-700">{summary.rejected} rejected</span> ·{' '}
-        <span className="font-medium text-neutral-600">{summary.alternative} alternative</span> ·{' '}
-        <span className="font-medium text-neutral-500">{summary.cancelled} cancelled</span>
-      </p>
+      {/* Status count cards: the answer, and the filter */}
+      <div className="mt-5">
+        <BookingStatusCards cards={cards} selected={status} onSelect={setStatus} />
+      </div>
 
-      {/* Role scope explanation */}
-      <div className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm">
-        {user.role === 'admin' && (
-          <p className="flex items-start gap-2">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" aria-hidden />
-            <span>
-              <span className="font-semibold text-slate-800">Official Spectra board.</span> The 25
-              decisions were generated by the solver. Ad-hoc manual decisions live in Approvals.
-            </span>
-          </p>
-        )}
-        {user.role === 'department_coordinator' && (
-          <p className="flex items-start gap-2">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" aria-hidden />
-            <span>
-              <span className="font-semibold text-slate-800">Official Spectra board.</span> Solver
-              decisions are read-only. Your department's ad-hoc lab bookings are decided in
-              Approvals.
-            </span>
-          </p>
-        )}
-        {user.role === 'faculty' && (
-          <p className="flex items-start gap-2">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" aria-hidden />
-            <span>
-              <span className="font-semibold text-slate-800">Read-only Spectra board.</span> Faculty
-              do not book venues; your session-change requests and their statuses appear in “My
-              requests” above. Use Manual Booking → Request change to move a session.
-            </span>
-          </p>
-        )}
-        {user.role === 'event_manager' && (
-          <p className="flex items-start gap-2">
-            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" aria-hidden />
-            <span>
-              <span className="font-semibold text-slate-800">
-                {usingOfficial ? 'Official Spectra board.' : 'Your requests only.'}
-              </span>{' '}
-              {usingOfficial
-                ? 'The solver decisions are read-only here. Submit an ad-hoc request from Manual Booking or the AI Assistant.'
-                : 'You can submit, track and cancel requests; an Admin or the owning department coordinator makes the decision. You can never approve your own request.'}
-            </span>
-          </p>
+      {/* Scope row */}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+          <Search
+            className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400"
+            aria-hidden
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Request, ID, club or venue"
+            aria-label="Search requests"
+            className={controlClass('w-full pl-8 pr-8 placeholder:text-slate-400')}
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 transition-colors hover:text-slate-700"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+
+        <select
+          value={roomFilter}
+          onChange={(event) => setRoomFilter(event.target.value)}
+          aria-label="Filter by venue"
+          className={controlClass()}
+        >
+          <option value="all">All venues</option>
+          {board.rooms.map((room) => (
+            <option key={room.id} value={room.id}>
+              {room.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={day}
+          onChange={(event) => setDay(event.target.value as 'all' | Day)}
+          aria-label="Filter by day"
+          className={controlClass()}
+        >
+          <option value="all">All days</option>
+          {DAYS.map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={tier}
+          onChange={(event) => setTier(event.target.value)}
+          aria-label="Filter by priority tier"
+          className={controlClass()}
+        >
+          {TIER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+
+        {hasFilters ? (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+            Clear
+          </button>
+        ) : null}
+
+        <p className="ml-auto shrink-0 text-[12px] tabular-nums text-slate-500">
+          {visible.length} of {board.rows.length} shown
+        </p>
+      </div>
+
+      {/* The fest week */}
+      <div className="mt-4">
+        {weekRows.length > 0 ? (
+          <FestWeekBoard
+            rows={weekRows}
+            semester={official.dataset?.semester ?? null}
+            selectedId={selectedId}
+            onSelect={selectRow}
+          />
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-6">
+            <p className="text-[13px] text-slate-500">
+              Nothing in this view holds a venue, so the week has no slots to draw.
+            </p>
+          </div>
         )}
       </div>
 
-      {/* Filters */}
-      <section className="cit-card mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center gap-2">
-          <Filter className="h-4 w-4 text-neutral-700" aria-hidden />
-          <h3 className="text-sm font-semibold text-slate-900">Filters</h3>
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="ml-auto rounded-md px-2 py-1 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-100"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label htmlFor="booking-search" className="mb-1 block text-xs font-medium text-slate-600">
-              Search
-            </label>
-            <input
-              id="booking-search"
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="ID, title, organizer, requester"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="booking-status" className="mb-1 block text-xs font-medium text-slate-600">
-              Status
-            </label>
-            <select
-              id="booking-status"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-            >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="booking-priority" className="mb-1 block text-xs font-medium text-slate-600">
-              Priority
-            </label>
-            <select
-              id="booking-priority"
-              value={String(priorityFilter)}
-              onChange={(event) =>
-                setPriorityFilter(
-                  event.target.value === 'all' ? 'all' : (Number(event.target.value) as BookingPriority),
-                )
-              }
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-            >
-              {PRIORITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label htmlFor="booking-room" className="mb-1 block text-xs font-medium text-slate-600">
-              Room
-            </label>
-            <select
-              id="booking-room"
-              value={roomFilter}
-              onChange={(event) => setRoomFilter(event.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
-            >
-              <option value="all">All rooms</option>
-              {data.rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label htmlFor="booking-day" className="text-xs font-medium text-slate-600">
-              Day
-            </label>
-            <select
-              id="booking-day"
-              value={dayFilter}
-              onChange={(event) => setDayFilter(event.target.value as DayFilter)}
-              className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800"
-            >
-              {DAY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {user.role !== 'event_manager' && !usingOfficial && (
-            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={mineOnly}
-                onChange={(event) => setMineOnly(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-neutral-900"
-              />
-              Only my requests
-            </label>
-          )}
-        </div>
-      </section>
-
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={CalendarCheck2}
-          title="No requests match these filters"
-          description="Try a different status, priority or room, or clear the filters to see the full board."
-          action={
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800"
-            >
-              Clear filters
-            </button>
-          }
+      {/* The ledger */}
+      <div className="mt-4">
+        <RequestLedger
+          rows={visible}
+          selectedId={selectedId}
+          onSelect={selectRow}
+          onClearFilters={clearFilters}
         />
-      ) : (
-        <>
-          {/* Desktop table */}
-          <div className="cit-card hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm lg:block">
-            <table className="w-full min-w-[1000px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                  <th scope="col" className="px-4 py-3">Request</th>
-                  <th scope="col" className="px-4 py-3">Venue &amp; time</th>
-                  <th scope="col" className="px-4 py-3">Priority</th>
-                  <th scope="col" className="px-4 py-3">Status</th>
-                  <th scope="col" className="px-4 py-3">Reason</th>
-                  <th scope="col" className="px-4 py-3 text-right">Decision</th>
-                </tr>
-              </thead>
-              <tbody
-                key={`${statusFilter}-${priorityFilter}-${dayFilter}-${mineOnly}-${roomFilter}`}
-                className="cit-stagger-rows divide-y divide-slate-100"
-              >
-                {filtered.map((booking) => {
-                  const permission = bookingDecisionPermission(data, booking, user)
-                  const conflicts = conflictsByBooking.get(booking.id) ?? []
-                  return (
-                    <tr key={booking.id} className="align-top hover:bg-slate-50/70">
-                      <td className="px-4 py-3">
-                        <p className="font-semibold text-slate-900">{booking.title}</p>
-                        <p className="text-xs text-slate-500">
-                          {booking.id} · {booking.organizer}
-                        </p>
-                        <p className="text-[11px] text-slate-400">Requester: {booking.requester}</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-slate-800">{roomName(booking.roomId)}</p>
-                        <p className="text-xs text-slate-500">
-                          {booking.day} {periodRangeLabel(booking.startPeriod, booking.periods)} ·{' '}
-                          {timeRangeLabel(booking.startPeriod, booking.periods)}
-                        </p>
-                        <p className="text-[11px] text-slate-400">
-                          {booking.expectedAttendees} expected
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <PriorityBadge priority={booking.priority} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <BookingStatusBadge status={booking.status} />
-                        {booking.decidedBy && (
-                          <p className="mt-1 text-[11px] text-slate-400">by {booking.decidedBy}</p>
-                        )}
-                      </td>
-                      <td className="max-w-[18rem] px-4 py-3">
-                        {booking.requestReason && (
-                          <p className="mb-1 text-xs leading-relaxed text-slate-700">
-                            <span className="font-semibold">Request reason:</span>{' '}
-                            {booking.requestReason}
-                          </p>
-                        )}
-                        <p className="text-xs leading-relaxed text-slate-600">
-                          {booking.decisionReason ?? booking.note}
-                        </p>
-                        <details className="mt-1">
-                          <summary className="cursor-pointer text-[11px] font-semibold text-neutral-700">
-                            Why this decision?
-                          </summary>
-                          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                            {bookingExplanation(booking, official.dataset)}
-                          </p>
-                        </details>
-                        {conflicts.length > 0 && (
-                          <p className="mt-1 text-[11px] font-medium text-neutral-700">
-                            ⚠ {conflicts.length} check{conflicts.length === 1 ? '' : 's'} flagged
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {booking.status !== 'pending' ? (
-                          <span className="text-xs text-slate-400">—</span>
-                        ) : usingOfficial ? (
-                          <span className="text-[11px] text-slate-400">Official solver decision</span>
-                        ) : permission.allowed ? (
-                          <button
-                            type="button"
-                            onClick={() => setTarget(booking)}
-                            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-neutral-800"
-                          >
-                            Decide
-                          </button>
-                        ) : (
-                          <span className="inline-flex max-w-[13rem] items-start gap-1 text-left text-[11px] leading-snug text-slate-400">
-                            <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-                            {permission.reason}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+      </div>
 
-          {/* Mobile cards */}
-          <div
-            key={`${statusFilter}-${priorityFilter}-${dayFilter}-${mineOnly}-${roomFilter}`}
-            className="cit-stagger space-y-3 lg:hidden"
-          >
-            {filtered.map((booking) => {
-              const permission = bookingDecisionPermission(data, booking, user)
-              const conflicts = conflictsByBooking.get(booking.id) ?? []
-              return (
-                <article
-                  key={booking.id}
-                  className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-900">{booking.title}</h3>
-                      <p className="text-xs text-slate-500">
-                        {booking.id} · {booking.organizer}
-                      </p>
-                    </div>
-                    <BookingStatusBadge status={booking.status} />
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-slate-400">Venue</p>
-                      <p className="font-medium text-slate-800">{roomName(booking.roomId)}</p>
-                      <p className="text-slate-500">
-                        {booking.day} {periodRangeLabel(booking.startPeriod, booking.periods)}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-wide text-slate-400">Priority</p>
-                      <PriorityBadge priority={booking.priority} />
-                    </div>
-                  </div>
-
-                  {booking.requestReason && (
-                    <p className="mt-3 text-xs leading-relaxed text-slate-700">
-                      <span className="font-semibold">Request reason:</span> {booking.requestReason}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                    {booking.decisionReason ?? booking.note}
-                  </p>
-                  <details className="mt-1">
-                    <summary className="cursor-pointer text-[11px] font-semibold text-neutral-700">
-                      Why this decision?
-                    </summary>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      {bookingExplanation(booking, official.dataset)}
-                    </p>
-                  </details>
-
-                  {conflicts.length > 0 && (
-                    <p className="mt-2 rounded-lg bg-neutral-50 px-2.5 py-1.5 text-[11px] font-medium text-neutral-700">
-                      ⚠ {conflicts.join(' · ')}
-                    </p>
-                  )}
-
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-slate-400">
-                      Requested by {booking.requester}
-                      {booking.decidedBy ? ` · decided by ${booking.decidedBy}` : ''}
-                    </p>
-                    {booking.status === 'pending' &&
-                      (usingOfficial ? (
-                        <span className="shrink-0 text-[11px] text-slate-400">Official solver decision</span>
-                      ) : permission.allowed ? (
-                        <button
-                          type="button"
-                          onClick={() => setTarget(booking)}
-                          className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-neutral-800"
-                        >
-                          Decide
-                        </button>
-                      ) : (
-                        <span className="inline-flex max-w-[11rem] items-start gap-1 text-right text-[11px] leading-snug text-slate-400">
-                          <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
-                          {permission.reason}
-                        </span>
-                      ))}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        </>
-      )}
-
-      <DecisionDialog
-        open={target !== null}
-        title={target ? `${target.id} — ${target.title}` : ''}
-        detail={target ? `${target.requester} · ${target.organizer} · ${bookingLocation(data, target)}` : undefined}
-        conflicts={target ? conflictsByBooking.get(target.id) ?? [] : []}
-        onClose={() => setTarget(null)}
-        onSubmit={submitDecision}
-      />
+      {/* Footer: where the numbers come from */}
+      <footer className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] text-slate-500">
+            {official.dataset?.dataset_id ?? 'official dataset'} ·{' '}
+            {official.dataset?.institute ?? 'Chilika Institute of Technology'} ·{' '}
+            {board.hardViolations === null
+              ? 'validator not run'
+              : `${board.hardViolations} hard violation${board.hardViolations === 1 ? '' : 's'}`}
+          </p>
+          {board.largestRoom ? (
+            <p className="mt-0.5 text-[12px] text-slate-500">
+              Largest venue is {board.largestRoom.name}, seating {board.largestRoom.capacity}.
+              {board.rows.some((row) => row.oversized)
+                ? ` One request asked for more people than that.`
+                : ''}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[12px] text-slate-500">Ranked</span>
+          {board.policyOrder.map((category) => (
+            <span
+              key={category}
+              className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600"
+            >
+              {categoryLabel(category)}
+            </span>
+          ))}
+        </div>
+      </footer>
     </div>
   )
 }
